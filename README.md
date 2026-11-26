@@ -5,6 +5,9 @@ Runs a Yaesu FT-897D (or FT-891, see the end) with a Digirig from a Raspberry Pi
 from a web page with a headset. In the examples below **192.168.1.50** stands for your Pi's address: use its number
 rather than `raspberrypi.local` if you connect over a VPN, where `.local` names don't work.
 
+**New here? Read the [user manual](docs/USER-MANUAL.md)**: setup, every setting, troubleshooting, testing and known issues.
+This is **beta** software, and remote operation is at your own risk.
+
 Tested on: Ubuntu 24.04 on a Raspberry Pi 4, Hamlib 4.5.5, one FT-897D with a Digirig, macOS laptops. Windows voice
 and the FT-891 are not yet tested on real hardware. Reports welcome in the GitHub issues.
 
