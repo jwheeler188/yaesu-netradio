@@ -1121,8 +1121,8 @@ radio.dcs = DCS
 def dcs_cmd(code, sql):
     """DCS code as written (23 = D023); sql: receive squelch as well, else transmit only. Code 0: CTCSS / DCS off."""
     return "D 0" if not code else (f"\\set_dcs_sql {code}" if sql else f"D {code}")
-AUD_NUM = ("nr", "low", "high", "notch_f", "notch_w", "bass", "treble", "fmsq", "comp", "presence", "txlow", "txhigh")
-AUD_BOOL = ("anotch", "notch", "squelch")
+AUD_NUM = ("nr", "low", "high", "shift", "notch_f", "notch_w", "bass", "treble", "fmsq", "comp", "presence", "txlow", "txhigh")
+AUD_BOOL = ("anotch", "notch", "squelch", "sharp")
 def aud_clean(a):
     """Audio settings saved with a favorite: names to show and the settings themselves. Never volume, mic gain or drive."""
     if not isinstance(a, dict): return None

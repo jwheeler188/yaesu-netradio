@@ -106,7 +106,7 @@ Open **http://192.168.1.50:8080** (your Pi's address) in any browser: Mac, Windo
    ends it; not with split or VFO A/B. Transmit locks check the carrier and the 2.8 kHz below it. Measured: tones exact, images 60 dB down, 99.96 % of
    the signal inside the LSB channel, same drive as USB within 0.5 dB (simulated radio filter).
 4. **Audio & filters tab** (settings live in the voice client and are remembered there): volume, mute, noise reduction
-   (0-24 dB), passband (also by dragging its edges in the waterfall), auto notch, manual notch (double-click the
+   (0-24 dB), passband (also by dragging its edges in the waterfall) with sharp edges (47 dB down 100 Hz outside) and a Shift control, auto notch, manual notch (double-click the
    waterfall), levelling, bass/treble, voice squelch; for transmit: drive, mic gain, compression, clarity, low/high cut.
    Measured: noise reduction 8 dB is free of artefacts, 13 dB slightly and 20 dB clearly "tinkles"; auto notch takes
    62 dB off a tone. There is no noise blanker here: the radio's filter has smeared the pulses by then, so use its NB.

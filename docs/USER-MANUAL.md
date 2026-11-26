@@ -257,6 +257,8 @@ changed from the panel's **Audio & filters** tab. Double-click a slider to put i
 | Noise reduction | 0 (off) to 24 dB | 8 | How much noise is removed. Standard method: 8 has no artefacts, 13 is slightly watery, 20 clearly "tinkles". For weak voices more is not better: try 6–10 |
 | Noise method | Standard / Neural (RNNoise) | Standard | **Standard** removes steady hiss. **Neural** is a small network trained on speech, and adds 20 ms of delay. On one 40 m recording it kept the voice about 7 dB louder at the same noise; on a very weak 20 m voice it turned the voice down too. Compare both on the same station. Mac only for now |
 | Low cut / High cut | 50–1500 / 600–3400 Hz | 100 / 2800 | The passband. Also on the preset buttons (SSB, SSB mid, SSB narrow, CW 500, CW 250, FM, AM) and the blue lines in the waterfall |
+| Shift | −1000 to +1000 Hz | 0 | Moves the whole passband up or down without changing its width, like a radio's IF shift: slide away from a station next to you. The blue lines follow it. Presets, the passband buttons and Reset filter set it back to 0; dragging an edge adds the shift into the cuts |
+| Sharp filter edges | on/off | on | Cuts signals just outside the passband hard: about 47 dB down 100 Hz outside the edge and 62 dB at 200 Hz (the gentler filter of earlier versions: 7 and 12 dB). The edge itself is where a signal is 6 dB down. Turn it off only to compare |
 | Bass / Treble | ±12 dB | 0 | Tone controls (500 Hz / 1.5 kHz shelves) |
 | Levelling | Off / Slow / Fast | Off | AGC. Fast suits nets with mixed signal levels |
 | Auto notch | on/off | off | Finds and removes whistles and carriers (−62 dB on a steady tone). Leave it off for CW |
@@ -268,6 +270,9 @@ changed from the panel's **Audio & filters** tab. Double-click a slider to put i
 **Receive presets:** SSB everyday, SSB noisy band, SSB weak signal / DX, SSB net, AM, CW wide, CW narrow, FM strong
 repeater, FM AllStar standard, FM noisy signal, No processing. "Change the preset with the radio's mode" switches
 presets automatically. Presets you save yourself are stored in that browser.
+
+**Crowded band tips:** narrow the passband (SSB narrow, 350–2200 Hz) and use **Shift** to move it away from the
+neighbour's splatter, keeping Sharp filter edges on. Watch the waterfall: put the loud signal outside a blue line.
 
 **Weak-signal tips:** use a wired headset; use "SSB: weak signal / DX"; keep Noise reduction moderate; replay with
 Record; and set the radio's DSP and noise blanker before you leave. A quieter antenna helps more than any processing.

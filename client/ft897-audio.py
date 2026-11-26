@@ -14,7 +14,7 @@ import argparse, array, atexit, collections, json, math, os, queue, socket, stru
 import pyaudio
 from ft897_dsp import DEFAULTS, NeuralNR, RxDsp, Speech, clean
 
-VERSION = "2026.11.25"
+VERSION = "2026.11.26"
 if sys.platform == "darwin": DEF_PLAY, DEF_REC = "BlackHole 2ch", "BlackHole 2ch"
 elif sys.platform == "win32": DEF_PLAY, DEF_REC = "CABLE Input", "CABLE Output"
 else: DEF_PLAY, DEF_REC = "", ""

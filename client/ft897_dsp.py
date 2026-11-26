@@ -13,10 +13,11 @@ DEFAULTS = {
     "volume": -12.0, "mute": False, "nr": 8.0, "low": 100, "high": 2800, "anotch": False, "notch": False,
     "notch_f": 1000, "notch_w": 100, "agc": "off", "bass": 0.0, "treble": 0.0, "squelch": False, "tick": True, "fmsq": 0,
     "neural": False,                                    # noise reduction by RNNoise instead of the standard method
+    "sharp": True, "shift": 0,                          # sharp passband edges; shift moves the whole passband (Hz)
     # transmit
     "drive": -5.0, "mic": 0.0, "comp": 8.0, "presence": 6.0, "txlow": 300, "txhigh": 2800,
 }
-RANGES = {"volume": (-40, 20), "fmsq": (0, 30), "nr": (0, 24), "low": (50, 2500), "high": (300, 3400), "notch_f": (100, 3300),
+RANGES = {"volume": (-40, 20), "fmsq": (0, 30), "nr": (0, 24), "low": (50, 2500), "high": (300, 3400), "shift": (-1000, 1000), "notch_f": (100, 3300),
           "notch_w": (20, 400), "bass": (-12, 12), "treble": (-12, 12), "drive": (-20, -1), "mic": (-20, 20),
           "comp": (0, 14), "presence": (0, 12), "txlow": (80, 500), "txhigh": (2000, 3200)}
 CHOICES = {"agc": ("off", "slow", "fast")}
@@ -90,6 +91,24 @@ LSA = _lsa_table(); LOG_V0 = math.log(0.001)
 
 PRESENT = 0.035        # share of frequency bins 10 dB over the noise (see RxDsp; noise alone stays below this)
 
+def passband(s):
+    """The passband actually used: low / high cut moved by the shift, kept inside 50-3400 Hz and at least 150 Hz wide."""
+    sh = s.get("shift", 0) or 0; w = max(150, s["high"] - s["low"])
+    lo = min(max(50, s["low"] + sh), 3400 - w); hi = min(3400, lo + w)
+    return lo, hi
+
+EDGE = 100        # Hz from fully open to fully closed at each sharp edge (raised cosine, -6 dB at the edge itself)
+def edge_mask(lo, hi, n, fs):
+    """Gain per FFT bin for a passband with sharp edges."""
+    out = []
+    for k in range(n // 2 + 1):
+        f = k * fs / n; g = 1.0
+        for e, up in ((lo, True), (hi, False)):
+            x = (f - e) / EDGE if up else (e - f) / EDGE           # > 0 inside the passband
+            g *= 0.0 if x <= -0.5 else 1.0 if x >= 0.5 else 0.5 + 0.5 * math.sin(math.pi * x)
+        out.append(g)
+    return out
+
 class NoiseReducer:
     """Hiss reduction for voice at 8 kHz (256-point FFT, 50 % overlap): tracks the noise in every frequency bin with a
     speech-presence estimate and turns down bins that hold only noise (Ephraim-Malah log-spectral gain,
@@ -117,7 +136,7 @@ class NoiseReducer:
                     X[i] = u + t; X[i + half] = u - t
             size *= 2
         return X
-    def frame(self, new, floor, lo=8, hi=90):
+    def frame(self, new, floor, lo=8, hi=90, mask=None):
         N, half, win = self.N, self.N // 2, self.win
         x = self.hist + new; self.hist = new
         X = self.fft([v * w for v, w in zip(x, win)])
@@ -143,6 +162,7 @@ class NoiseReducer:
             if g > 1: g = 1.0
             prev[k] = g * g * post
             if g < floor: g = floor
+            if mask is not None: g *= mask[k]
             X[k] *= g
             if 0 < k < half: X[N - k] = X[k].conjugate()
         self.presence += (pres / max(1, hi - lo) - self.presence) * 0.2
@@ -403,11 +423,18 @@ class RxDsp:
         self.reconfigure()
     def reconfigure(self):
         s = self.s
-        key = (s["low"], s["high"], s["notch"], s["notch_f"], s["notch_w"], s["bass"], s["treble"])
+        key = (s["low"], s["high"], s.get("shift", 0), s.get("sharp", True), s["notch"], s["notch_f"], s["notch_w"], s["bass"], s["treble"])
         if key == self.key: return
         self.key = key
-        self.hp = retune(self.hp, [biquad("hp", 8000, s["low"], q) for q in BUTTER4])
-        self.lp = retune(self.lp, [biquad("lp", 8000, s["high"], q) for q in BUTTER8])
+        lo, hi = passband(s); self.edges = (lo, hi)
+        if s.get("sharp", True):                  # the FFT mask makes the edges; the filters only clear what is far outside
+            self.mask = edge_mask(lo, hi, NoiseReducer.N, 8000)
+            self.hp = retune(self.hp, [biquad("hp", 8000, max(40, lo - 150), q) for q in BUTTER4])
+            self.lp = retune(self.lp, [biquad("lp", 8000, min(3700, hi + 250), q) for q in BUTTER8])
+        else:
+            self.mask = None
+            self.hp = retune(self.hp, [biquad("hp", 8000, lo, q) for q in BUTTER4])
+            self.lp = retune(self.lp, [biquad("lp", 8000, hi, q) for q in BUTTER8])
         self.nf = retune(self.nf, [biquad("notch", 8000, s["notch_f"], max(0.5, s["notch_f"] / s["notch_w"]))] * 1) if s["notch"] else []
         eq = []
         if abs(s["bass"]) > 0.1: eq.append(biquad("lowshelf", 8000, 500, 0.7071, s["bass"]))
@@ -434,11 +461,11 @@ class RxDsp:
         if neural and self.nn is None: self.nn = NeuralNR()
         elif not neural and self.nn is not None: self.nn = None
         nfloor = 1.0 if neural else floor                                   # neural: the standard method only measures
-        lo = max(2, int(s["low"] / 31.25) + 1); hi = min(105, max(lo + 4, int(s["high"] * 0.9 / 31.25)))
+        lo = max(2, int(self.edges[0] / 31.25) + 1); hi = min(105, max(lo + 4, int(self.edges[1] * 0.9 / 31.25)))
         while len(self.pend) >= hop:
             if self.fm.g == 0 and not self.fm.open:                        # closed: silence, and the noise reduction learns nothing
                 del self.pend[:hop]; out += [0.0] * hop; continue
-            b = self.nr.frame(self.pend[:hop], nfloor, lo, hi); del self.pend[:hop]
+            b = self.nr.frame(self.pend[:hop], nfloor, lo, hi, self.mask); del self.pend[:hop]
             b = self.fm.gate(b)
             b = self.sq.process(b, s["squelch"], self.nr.presence)
             b = self.lev.process(b, s["agc"], self.nr.presence)

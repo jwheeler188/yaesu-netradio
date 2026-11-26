@@ -262,6 +262,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
           <div class="sl"><span>Levelling</span><select id="agc"><option value="off">Off</option><option value="slow">Slow</option><option value="fast">Fast</option></select><span></span></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="anotch"> Auto notch (whistles, carriers) <span class="small" id="anl"></span></label></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="notch"> Manual notch (drag its line in the waterfall)</label></div>
+          <div class="sl"><label class="chk" title="On: signals just outside the passband are cut hard (about 47 dB down 100 Hz outside). Off: the gentler filters of earlier versions."><input type="checkbox" id="sharp"> Sharp filter edges</label></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="tick"> Remove CAT ticks</label></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="squelch"> Voice squelch <span class="small" id="sql"></span></label></div>
           <div class="row" id="presets"><span class="small">Passband</span></div>
@@ -626,7 +627,7 @@ tab(["audio", "fav", "reps"].includes(store("ft897.tab")) ? store("ft897.tab") :
 const A = { set: {}, at: {}, out: {}, timer: null, last: 0 };
 const dB = v => (v > 0 ? "+" : "") + Math.round(v) + " dB", hz = v => Math.round(v) + " Hz";
 const RXS = [["volume", "Volume", -40, 20, 1, dB], ["nr", "Noise reduction", 0, 24, 1, v => v ? Math.round(v) + " dB" : "off"], ["low", "Low cut", 50, 1500, 10, hz],
-  ["high", "High cut", 600, 3400, 10, hz], ["bass", "Bass", -12, 12, 1, dB], ["treble", "Treble", -12, 12, 1, dB], ["fmsq", "FM squelch", 0, 30, 1, v => v ? Math.round(v) : "off"], ["notch_f", "Notch at", 100, 3300, 5, hz], ["notch_w", "Notch width", 20, 400, 10, hz]];
+  ["high", "High cut", 600, 3400, 10, hz], ["shift", "Shift", -1000, 1000, 10, v => v ? (v > 0 ? "+" : "") + Math.round(v) + " Hz" : "0"], ["bass", "Bass", -12, 12, 1, dB], ["treble", "Treble", -12, 12, 1, dB], ["fmsq", "FM squelch", 0, 30, 1, v => v ? Math.round(v) : "off"], ["notch_f", "Notch at", 100, 3300, 5, hz], ["notch_w", "Notch width", 20, 400, 10, hz]];
 const TXS = [["drive", "Drive (ALC)", -20, -1, 1, v => Math.round(v) + " dBFS"], ["mic", "Mic gain", -20, 20, 1, dB], ["comp", "Compression", 0, 14, 1, dB],
   ["presence", "Clarity", 0, 12, 1, dB], ["txlow", "Low cut", 80, 500, 10, hz], ["txhigh", "High cut", 2000, 3200, 50, hz]];
 const PRE = [["SSB", 100, 2800], ["SSB mid", 250, 2600], ["SSB narrow", 350, 2200], ["CW 500", 450, 950], ["CW 250", 575, 825], ["FM", 250, 3400], ["AM", 100, 3400]];
@@ -642,9 +643,9 @@ for (const [box, list] of [["rxsl", RXS], ["txsl", TXS]]) for (const [k, label, 
     if (k === "low" && +i.value > (A.set.high || 2800) - 150) o.high = Math.min(3400, +i.value + 150); if (k === "high" && +i.value < (A.set.low || 100) + 150) o.low = Math.max(50, +i.value - 150); aset(o); };
   i.ondblclick = () => aset({ [k]: ADEF[k] }); i.title = "double-click: default"; $(box).appendChild(d); SL[k] = { d, i, v: d.querySelector(".v"), fmt };
 }
-const ADEF = { fmsq: 0, volume: -12, nr: 8, low: 100, high: 2800, bass: 0, treble: 0, notch_f: 1000, notch_w: 100, drive: -5, mic: 0, comp: 8, presence: 6, txlow: 300, txhigh: 2800 };
-for (const [n, lo, hi] of PRE) { const b = document.createElement("button"); b.textContent = n; b.dataset.lo = lo; b.dataset.hi = hi; b.onclick = () => aset({ low: lo, high: hi }); $("presets").appendChild(b); }
-for (const k of ["anotch", "notch", "squelch", "tick"]) $(k).onchange = () => aset({ [k]: $(k).checked });
+const ADEF = { fmsq: 0, volume: -12, nr: 8, low: 100, high: 2800, shift: 0, bass: 0, treble: 0, notch_f: 1000, notch_w: 100, drive: -5, mic: 0, comp: 8, presence: 6, txlow: 300, txhigh: 2800 };
+for (const [n, lo, hi] of PRE) { const b = document.createElement("button"); b.textContent = n; b.dataset.lo = lo; b.dataset.hi = hi; b.onclick = () => aset({ low: lo, high: hi, shift: 0 }); $("presets").appendChild(b); }
+for (const k of ["anotch", "notch", "squelch", "tick", "sharp"]) $(k).onchange = () => aset({ [k]: $(k).checked });
 $("agc").onchange = () => aset({ agc: $("agc").value });
 $("nrkind").onchange = () => aset({ neural: $("nrkind").value === "neural" });
 $("qvol").oninput = () => aset({ volume: +$("qvol").value }); $("qmute").onclick = () => aset({ mute: !A.set.mute });
@@ -689,13 +690,14 @@ function paintAudio() {
   SL.notch_f.d.style.display = SL.notch_w.d.style.display = s.notch ? "" : "none";
   for (const k of ["anotch", "notch", "squelch"]) $(k).checked = !!s[k];
   $("tick").checked = s.tick !== false; $("tick").disabled = s.tick === undefined;
+  $("sharp").checked = s.sharp !== false; $("sharp").disabled = s.sharp === undefined;
   if (document.activeElement !== $("agc")) $("agc").value = s.agc;
   { const c = S && S.client, ok = !!(c && c.neural_ok), k = $("nrkind"); k.options[1].disabled = !ok; k.disabled = s.neural === undefined;
     if (document.activeElement !== k) k.value = s.neural && ok ? "neural" : "std";
     $("nrkl").textContent = s.neural === undefined ? "update the voice client" : !ok ? "not installed on this computer" : s.neural && !s.nr ? "set Noise reduction above off" : ""; }
   $("qvol").value = s.volume; $("qmute").classList.toggle("on", !!s.mute); $("qmute").textContent = s.mute ? "Muted" : "Mute";
   document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("on", +b.dataset.lo === s.low && +b.dataset.hi === s.high));
-  $("wfL").style.width = s.low / WF.fmax * 100 + "%"; $("wfR").style.left = s.high / WF.fmax * 100 + "%";
+  const [elo, ehi] = edges(s); $("wfL").style.width = elo / WF.fmax * 100 + "%"; $("wfR").style.left = ehi / WF.fmax * 100 + "%";
 }
 function renderAudio() {
   const c = S && S.client, v = !!(c && c.voice && c.set);
@@ -733,7 +735,7 @@ const RXP = {
   "CW: wide": { nr: 5, low: 450, high: 950 },
   "CW: narrow": { nr: 5, low: 575, high: 825 },
   "No processing": { nr: 0, low: 50, high: 3400 } };
-const RXBASE = { nr: 0, low: 100, high: 2800, anotch: false, notch: false, agc: "off", bass: 0, treble: 0, squelch: false, fmsq: 0 };
+const RXBASE = { nr: 0, low: 100, high: 2800, shift: 0, anotch: false, notch: false, agc: "off", bass: 0, treble: 0, squelch: false, fmsq: 0 };
 const TXP = {
   "SSB: everyday": { comp: 8, presence: 6, txlow: 300, txhigh: 2800 },
   "SSB: DX punch": { comp: 12, presence: 9, txlow: 350, txhigh: 2700 },
@@ -780,13 +782,16 @@ function preAuto() {                                     // only on a change of 
 }
 // drag the passband edges and the notch in the waterfall; double-click puts the notch there
 let drag = null;
+function edges(s) {                                     // the passband actually heard: low / high cut moved by Shift (as the voice client does it)
+  const w = Math.max(150, s.high - s.low), lo = Math.min(Math.max(50, s.low + (s.shift || 0)), 3400 - w); return [lo, Math.min(3400, lo + w)]; }
 function wfAt(e) { const r = $("wfbox").getBoundingClientRect(); return { x: e.clientX - r.left, f: Math.max(0, Math.min(WF.fmax, (e.clientX - r.left) / r.width * WF.fmax)), w: r.width }; }
 function wfNear(p) { if (!S || !S.client || !S.client.set) return null; const s = A.set, d = f => Math.abs(f / WF.fmax * p.w - p.x);
-  const c = [["low", d(s.low)], ["high", d(s.high)], ...(s.notch ? [["notch_f", d(s.notch_f)]] : [])].sort((a, b) => a[1] - b[1])[0]; return c[1] < 7 ? c[0] : null; }
+  const [elo, ehi] = edges(s), c = [["low", d(elo)], ["high", d(ehi)], ...(s.notch ? [["notch_f", d(s.notch_f)]] : [])].sort((a, b) => a[1] - b[1])[0]; return c[1] < 7 ? c[0] : null; }
 function wfDrag(e) {
   const p = wfAt(e);
   if (drag && !(e.buttons & 1)) drag = null;               // the button was let go somewhere we didn't see it
-  if (drag && !drag.on) { if (Math.abs(p.x - drag.x) < 5) return true; drag.on = true; }      // a click near a line is not a drag
+  if (drag && !drag.on) { if (Math.abs(p.x - drag.x) < 5) return true; drag.on = true;       // a click near a line is not a drag
+    if (A.set.shift && drag.k !== "notch_f") { const [elo, ehi] = edges(A.set); aset({ low: elo, high: ehi, shift: 0 }); } }   // dragging an edge takes the shift into the cuts
   if (!drag) { $("wf").style.cursor = wfNear(p) ? "ew-resize" : "crosshair"; return false; }
   const f = Math.round(p.f / 10) * 10, s = A.set;
   if (drag.k === "low") aset({ low: Math.max(50, Math.min(f, s.high - 400)) });
@@ -797,7 +802,7 @@ function wfDrag(e) {
 $("wfbox").addEventListener("pointerdown", e => { const p0 = wfAt(e), k = e.button === 0 ? wfNear(p0) : null; drag = k ? { k, x: p0.x, on: false } : null; if (drag) { e.preventDefault(); $("wfbox").setPointerCapture(e.pointerId); } });
 ["pointerup", "pointercancel", "lostpointercapture"].forEach(n => $("wfbox").addEventListener(n, () => { drag = null; }));
 window.addEventListener("blur", () => { drag = null; });
-$("wfreset").onclick = () => { const p = preFull("rx", $("rxpre").value) || preFull("rx", MODEPRE[S && S.rig.mode] || "SSB: everyday") || RXBASE; aset({ low: p.low, high: p.high, notch: false }); };
+$("wfreset").onclick = () => { const p = preFull("rx", $("rxpre").value) || preFull("rx", MODEPRE[S && S.rig.mode] || "SSB: everyday") || RXBASE; aset({ low: p.low, high: p.high, shift: 0, notch: false }); };
 $("wfbox").addEventListener("dblclick", e => { if (S && S.client && S.client.set) aset({ notch: true, notch_f: Math.max(100, Math.min(3300, Math.round(wfAt(e).f / 5) * 5)) }); });
 
 // ---------- repeaters
