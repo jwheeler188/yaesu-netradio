@@ -1,0 +1,22 @@
+# build and local files
+.DS_Store
+__pycache__/
+*.pyc
+macOS/.venv/
+macOS/.arch
+server.txt
+dist/
+recordings/
+
+# kept on each Pi, never shared: settings, password hashes, the repeater list (RepeaterBook data may not be redistributed), logs
+pi/settings.json
+pi/passwords.json
+pi/passwords.bak
+pi/repeaters.json
+pi/*.tmp
+pi/log.txt
+pi/backup-*/
+
+# personal tools
+pi/tools/wifi24.sh
+make-test-package.sh

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FT-897D Administration</title>
+<style>
+:root { --bg: #12151a; --card: #1b2027; --edge: #2a313b; --text: #e6e9ee; --dim: #8a94a3; --accent: #5fb3ff; --good: #4cc38a; --warn: #f0b429; --bad: #ef5350; --btn: #252c36; --btnhover: #2f3844; }
+@media (prefers-color-scheme: light) { :root { --bg: #eef1f5; --card: #fff; --edge: #d5dbe3; --text: #1b2027; --dim: #5d6775; --btn: #e9edf2; --btnhover: #dde3ea; --accent: #1769aa; --good: #19794d; --warn: #9a6a00; --bad: #c62828; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 14px 16px 110px; }
+header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; } h1 { font-size: 18px; margin: 0; } .spacer { flex: 1; }
+.card { background: var(--card); border: 1px solid var(--edge); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+h2 { font-size: 15px; margin: 0 0 4px; } .help { color: var(--dim); font-size: 13px; margin: 0 0 10px; max-width: 68ch; }
+button, input, select { font: inherit; color: var(--text); background: var(--btn); border: 1px solid var(--edge); border-radius: 6px; padding: 6px 9px; }
+button { cursor: pointer; } button:hover { background: var(--btnhover); } button.primary { border-color: var(--accent); } button:disabled { opacity: .4; cursor: default; }
+input[type=checkbox] { width: 18px; height: 18px; padding: 0; flex: none; accent-color: var(--accent); }
+input.mhz { width: 108px; } input.n { width: 76px; }
+.f { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--edge); }
+.f:first-of-type { border-top: 0; } .f small { display: block; color: var(--dim); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; } th { text-align: left; color: var(--dim); font-size: 13px; font-weight: 600; } td, th { padding: 4px 8px 4px 0; border-top: 1px solid var(--edge); } thead th { border: 0; }
+td.note input { width: 100%; min-width: 130px; } .scroll { overflow-x: auto; } tr.off td { background: color-mix(in srgb, var(--bad) 9%, transparent); }
+td label { display: flex; gap: 7px; align-items: center; white-space: nowrap; font-size: 14px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.msg { min-height: 20px; font-size: 14px; } .msg.bad { color: var(--bad); } .msg.good { color: var(--good); }
+.warn { border-color: var(--bad); border-left-width: 5px; }
+#bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--edge); padding: 10px 16px; display: none; }
+#bar div { max-width: 828px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+form.pw label { display: grid; grid-template-columns: 210px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; max-width: 560px; } a { color: var(--accent); }
+@media (max-width: 520px) { form.pw label { grid-template-columns: 1fr; gap: 2px; } }
+</style>
+</head>
+<body>
+<main>
+<header><h1 id="ttl">FT-897D Administration</h1><span class="spacer"></span><a href="/">Radio panel</a><button id="out" hidden>Sign out</button></header>
+
+<div class="card" id="first" hidden><h2>Set the administrator password</h2>
+  <p class="help">This password protects this page: band locks, the high-SWR shutdown and who may use the radio. Use one you don't use anywhere else: this page is not encrypted on your network. If you forget it, delete <code>passwords.json</code> on the Pi.</p>
+  <form class="pw" id="ffirst"><label>New password (8 or more) <input type="password" id="n1" autocomplete="new-password" minlength="8" required></label>
+  <label>Again <input type="password" id="n2" autocomplete="new-password" required></label><button class="primary">Set password</button></form><div class="msg bad" id="mfirst"></div></div>
+
+<div class="card" id="signin" hidden><h2>Sign in</h2>
+  <form class="pw" id="fsign"><label>Administrator password <input type="password" id="pw" autocomplete="current-password" required></label><button class="primary">Sign in</button></form><div class="msg bad" id="msign"></div></div>
+
+<div id="app" hidden>
+  <div class="card warn" id="prob" hidden></div>
+  <div class="card warn" id="trips" hidden></div>
+
+  <div class="card"><h2>Transmitting</h2>
+    <div class="f"><span>Allow transmitting<small>Off = receive only, for everyone. A transmission that is under way stops.</small></span><input type="checkbox" data-k="tx"></div>
+    <div class="f"><span>Only inside the bands below<small>Untick it if you are licensed to transmit elsewhere (MARS, CAP).</small></span><input type="checkbox" data-k="inside"></div>
+    <div class="f"><span>Longest transmission, seconds<small>10 to 600</small></span><input class="n" type="number" min="10" max="600" data-k="tx_timeout"></div>
+  </div>
+
+  <div class="card"><h2>Bands</h2><p class="help">A locked band can still be listened to. The edges are the US ones: change them to your own limits or license. The lock works for the panel, WSJT-X and other programs. It can't stop the microphone or key plugged into the radio itself.</p>
+    <div class="scroll"><table><thead><tr><th>Band</th><th>Transmit</th><th>From MHz</th><th>To MHz</th><th>Reason shown when locked</th></tr></thead><tbody id="bands"></tbody></table></div></div>
+
+  <div class="card"><h2>Locked ranges</h2><p class="help">Parts of a band where transmitting is never allowed, for example where the antenna is not matched, or a local band-plan limit.</p>
+    <div class="scroll"><table><thead><tr><th>From MHz</th><th>To MHz</th><th>Reason</th><th></th></tr></thead><tbody id="blocks"></tbody></table></div><div class="row"><button id="addb">Add a range</button></div></div>
+
+  <div class="card"><h2>High-SWR shutdown</h2><p class="help">While the radio transmits, its meters are read about 5 times a second. On high SWR the radio is un-keyed and the band stays locked until someone resets it. It is a backup: tune the antenna first and set the radio's own power sensibly.</p>
+    <div class="f"><span>Shutdown on</span><input type="checkbox" data-k="swr.on"></div>
+    <div class="f"><span>Use the radio's own high-SWR warning</span><input type="checkbox" data-k="swr.flag"></div>
+    <div class="f"><span>Also stop at this SWR meter step<small><span id="swrnote">1 to 15. The FT-897 gives steps, not a ratio; a good antenna shows 0 or 1.</span></small></span><input class="n" type="number" min="1" max="15" data-k="swr.level"></div>
+    <div class="f"><span>Readings in a row<small>1 to 20. 3 is about 0.6 s.</small></span><input class="n" type="number" min="1" max="20" data-k="swr.reads"></div>
+    <div class="f"><span>Who may reset it</span><select data-k="swr.reset"><option value="anyone">Anyone who may use the radio</option><option value="admin">Only the administrator</option></select></div>
+  </div>
+
+  <div class="card"><h2>Who may use the radio</h2>
+    <div class="f"><span>Nobody may tune or transmit without taking control<small>Applies to the panel, WSJT-X and the audio program, which then connect only after Take control. Set an operator password with it. Listening in the panel's waterfall still works.</small></span><input type="checkbox" data-k="need_control"></div>
+    <div class="f"><span>Time to answer when someone asks for control, seconds<small>10 to 300</small></span><input class="n" type="number" min="10" max="300" data-k="answer_s"></div>
+    <div class="f"><span>If there is no answer</span><select data-k="no_answer"><option value="grant">They get control</option><option value="refuse">They don't</option></select></div>
+    <div class="f"><span>Release control after this long without contact, seconds<small>30 to 3600</small></span><input class="n" type="number" min="30" max="3600" data-k="owner_timeout"></div>
+    <div class="f"><span>Other names this panel may be opened by<small>Only needed for a name with a dot, such as a DDNS name. Separate several with spaces.</small></span><input id="hosts"></div>
+  </div>
+
+  <div class="card"><h2>Locked settings</h2><p class="help">Only the administrator can change what is ticked here.</p>
+    <div class="f"><span>Transmit audio (drive, mic gain, compression, filters)</span><input type="checkbox" data-k="locks.txaudio"></div>
+    <div class="f"><span>Test tone</span><input type="checkbox" data-k="locks.tone"></div>
+    <div class="f"><span>Repeater list</span><input type="checkbox" data-k="locks.repeaters"></div>
+    <div class="f"><span>Highest drive for voice, dBFS<small>-20 to -1. -1 = no limit.</small></span><input class="n" type="number" min="-20" max="-1" data-k="max_drive"></div>
+  </div>
+
+  <div class="card"><h2>Sound levels on the Pi</h2><p class="help">Set at every start, and again whenever the Digirig is plugged back in: it comes back with its own defaults, which can be far too loud. Empty = left alone. Measure yours once (README, Audio levels).</p>
+    <div class="f"><span>Receive (Mic capture)<small>0 to 35</small></span><input class="n" type="number" min="0" max="35" data-k="mic" data-null></div>
+    <div class="f"><span>Transmit (Speaker)<small>0 to 37</small></span><input class="n" type="number" min="0" max="37" data-k="spk" data-null></div>
+  </div>
+
+  <div class="card"><h2>Passwords</h2><p class="help">The operator password is asked for when someone takes control. Without one, anyone on the network can. Changing a password signs everyone out.</p>
+    <form class="pw" id="foper"><label><b id="operh"></b></label><label>New operator password <input type="password" id="o1" autocomplete="new-password"></label><label>Again <input type="password" id="o2" autocomplete="new-password"></label><label>Your administrator password <input type="password" id="oc" autocomplete="current-password" required></label><div class="row"><button class="primary">Set operator password</button><button type="button" id="odel">Remove it</button></div></form><div class="msg" id="moper"></div>
+    <form class="pw" id="fadm" style="margin-top:14px"><label><b>Administrator</b></label><label>New administrator password <input type="password" id="a1" autocomplete="new-password" minlength="8" required></label><label>Again <input type="password" id="a2" autocomplete="new-password" required></label><label>Current one <input type="password" id="ac" autocomplete="current-password" required></label><button>Change</button></form><div class="msg" id="madm"></div>
+  </div>
+</div>
+</main>
+<div id="bar"><div><span class="msg" id="mbar">Not saved yet.</span><span class="spacer"></span><button id="undo">Undo</button><button class="primary" id="save">Save</button></div></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id), esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let C = null, saved = "", D = {};
+async function post(path, body) {
+  try { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Panel": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); return r.ok ? { ok: true, ...j } : { ok: false, error: j.error || "error " + r.status, status: r.status }; }
+  catch (e) { return { ok: false, error: "no connection to the Pi" }; }
+}
+async function load() {
+  try { D = await (await fetch("/api/admin", { cache: "no-store" })).json(); } catch (e) { $("msign").textContent = "no connection to the Pi"; $("signin").hidden = false; return; }
+  if (D.radio && D.radio.key !== "ft897d") { document.title = $("ttl").textContent = D.radio.name + " Administration"; $("swrnote").textContent = "1 to 15. On the " + D.radio.name + " step 7 is about 2.4:1 (approximate); a good antenna shows 0 to 2."; }
+  const ad = D.role === "admin"; $("first").hidden = D.admin_set; $("signin").hidden = ad || !D.admin_set; $("app").hidden = !ad; $("out").hidden = !D.role;
+  if (D.role === "oper") $("msign").textContent = "You are signed in as operator. This page needs the administrator password.";
+  if (!ad) { $("bar").style.display = "none"; return; }
+  C = D.cfg; saved = JSON.stringify(C); paint();
+}
+const get = k => k.split(".").reduce((o, p) => o[p], C), put = (k, v) => { const p = k.split("."), l = p.pop(); p.reduce((o, q) => o[q], C)[l] = v; };
+const mhz = hz => String(+(hz / 1e6).toFixed(6)), hz = v => Math.round(parseFloat(String(v).replace(",", ".")) * 1e6);
+function paint() {
+  document.querySelectorAll("[data-k]").forEach(e => { const v = get(e.dataset.k); if (e.type === "checkbox") e.checked = v; else e.value = v === null ? "" : v; });
+  $("hosts").value = C.hosts.join(" ");
+  $("bands").innerHTML = C.bands.map((b, i) => `<tr class="${b.tx ? "" : "off"}" data-i="${i}"><td><b>${esc(b.name)}</b></td><td><label><input type="checkbox" data-b="tx" ${b.tx ? "checked" : ""} aria-label="Transmit on ${esc(b.name)}"><span>${b.tx ? "Allowed" : "Locked"}</span></label></td>` +
+    `<td><input class="mhz" data-b="lo" value="${mhz(b.lo)}" inputmode="decimal" aria-label="${esc(b.name)} from"></td><td><input class="mhz" data-b="hi" value="${mhz(b.hi)}" inputmode="decimal" aria-label="${esc(b.name)} to"></td><td class="note"><input data-b="note" maxlength="80" value="${esc(b.note)}" aria-label="${esc(b.name)} reason"></td></tr>`).join("");
+  $("blocks").innerHTML = C.blocks.map((b, i) => `<tr data-i="${i}"><td><input class="mhz" data-b="lo" value="${b.lo ? mhz(b.lo) : ""}" inputmode="decimal" aria-label="from"></td><td><input class="mhz" data-b="hi" value="${b.hi ? mhz(b.hi) : ""}" inputmode="decimal" aria-label="to"></td><td class="note"><input data-b="note" maxlength="80" value="${esc(b.note)}" aria-label="reason"></td><td><button data-del="${i}">Remove</button></td></tr>`).join("") || `<tr><td colspan="4" style="color:var(--dim)">None</td></tr>`;
+  $("prob").hidden = !D.problem; $("prob").textContent = D.problem ? D.problem + ". Transmitting is off until you check this page and save it." : "";
+  const t = Object.entries(D.trips || {}); $("trips").hidden = !t.length;
+  $("trips").innerHTML = t.map(([b, x]) => `<div class="row" style="margin:0"><span><b>High SWR on ${esc(b)}</b>: ${esc(x.why)} at ${mhz(x.hz)} MHz, ${new Date(x.at * 1000).toLocaleString()}</span><span class="spacer"></span><button data-swr="${esc(b)}">Reset</button></div>`).join("");
+  $("operh").textContent = "Operator: " + (D.oper_set ? "password set" : "no password, anyone may take control"); $("odel").hidden = !D.oper_set;
+  dirty();
+}
+function dirty(m, bad) { const d = JSON.stringify(C) !== saved; $("bar").style.display = d || m ? "block" : "none"; $("save").disabled = $("undo").disabled = !d; $("mbar").textContent = m || "Not saved yet."; $("mbar").className = "msg" + (m ? bad ? " bad" : " good" : ""); }
+document.querySelectorAll("[data-k]").forEach(e => e.addEventListener("input", () => { put(e.dataset.k, e.type === "checkbox" ? e.checked : e.type === "number" ? (e.value === "" ? "null" in e.dataset ? null : get(e.dataset.k) : +e.value) : e.value); dirty(); }));
+$("hosts").oninput = () => { C.hosts = $("hosts").value.toLowerCase().split(/[\s,]+/).filter(Boolean); dirty(); };
+for (const id of ["bands", "blocks"]) $(id).addEventListener("input", e => {
+  const tr = e.target.closest("tr"), k = e.target.dataset.b; if (!k) return; const b = C[id][+tr.dataset.i];
+  if (k === "tx") { b.tx = e.target.checked; tr.className = b.tx ? "" : "off"; tr.querySelector("label span").textContent = b.tx ? "Allowed" : "Locked"; }
+  else b[k] = k === "note" ? e.target.value : hz(e.target.value) || 0;
+  dirty();
+});
+$("blocks").addEventListener("click", e => { const d = e.target.dataset.del; if (d !== undefined) { C.blocks.splice(+d, 1); paint(); } });
+$("addb").onclick = () => { C.blocks.push({ lo: 0, hi: 0, note: "" }); paint(); $("blocks").querySelector("tr:last-child input").focus(); };
+$("undo").onclick = () => { C = JSON.parse(saved); paint(); };
+$("save").onclick = async () => {
+  for (const x of [...C.bands, ...C.blocks]) if (!(x.lo > 0 && x.hi > x.lo && x.hi <= 470e6)) return dirty(`Check the edges of ${x.name || "the locked range"}: "From" must be below "To" (MHz).`, true);
+  if (C.need_control && !D.oper_set && !confirm("No operator password is set, so anyone can still take control. Save anyway?")) return;
+  const r = await post("/api/admin", { op: "save", cfg: C });
+  if (!r.ok) { dirty(r.error, true); if (r.status === 403) setTimeout(load, 1500); return; }
+  C = r.cfg; saved = JSON.stringify(C); D.problem = ""; paint(); dirty("Saved. It applies now."); setTimeout(() => { if (JSON.stringify(C) === saved) dirty(); }, 3000);
+};
+$("trips").onclick = async e => { const b = e.target.dataset.swr; if (b && confirm("Reset the high-SWR lock? Only after checking the antenna.")) { const r = await post("/api/swr_reset", { band: b }); if (!r.ok) alert(r.error); else { delete D.trips[b]; paint(); } } };
+$("fsign").onsubmit = async e => { e.preventDefault(); const r = await post("/api/login", { password: $("pw").value }); $("pw").value = ""; $("msign").textContent = r.ok ? "" : r.error; if (r.ok) load(); };
+$("ffirst").onsubmit = async e => { e.preventDefault(); if ($("n1").value !== $("n2").value) return $("mfirst").textContent = "The two entries differ."; const r = await post("/api/admin", { op: "setup", password: $("n1").value }); $("mfirst").textContent = r.ok ? "" : r.error; if (r.ok) load(); };
+const say = (id, r, t) => { $(id).className = "msg " + (r.ok ? "good" : "bad"); $(id).textContent = r.ok ? t : r.error; };
+async function setPw(which, pw, cur, id, t) { const r = await post("/api/admin", { op: "password", which, password: pw, current: cur }); say(id, r, t); if (r.ok) { document.querySelectorAll("input[type=password]").forEach(i => i.value = ""); const keep = JSON.stringify(C) !== saved ? C : null; await load(); if (keep) { C = keep; paint(); } } }
+$("foper").onsubmit = e => { e.preventDefault(); if ($("o1").value !== $("o2").value) return say("moper", { ok: false, error: "The two entries differ." }); if (!$("o1").value) return say("moper", { ok: false, error: "Type a new password, or use Remove it." }); setPw("oper", $("o1").value, $("oc").value, "moper", "Operator password set."); };
+$("odel").onclick = () => setPw("oper", "", $("oc").value, "moper", "Operator password removed.");
+$("fadm").onsubmit = e => { e.preventDefault(); if ($("a1").value !== $("a2").value) return say("madm", { ok: false, error: "The two entries differ." }); setPw("admin", $("a1").value, $("ac").value, "madm", "Changed."); };
+$("out").onclick = async () => { await post("/api/logout", {}); load(); };
+window.addEventListener("beforeunload", e => { if (C && JSON.stringify(C) !== saved) e.preventDefault(); });
+load();
+</script>
+</body>
+</html>
