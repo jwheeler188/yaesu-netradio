@@ -41,6 +41,8 @@ programs over the network, and voice from a web page with a headset.
 
 ## 1. What it does
 
+<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="640"><br><em>The web panel: waterfall, scan, frequency display, band and mode buttons, meters and PTT.</em></p>
+
 The radio and Digirig stay at home, plugged into a Raspberry Pi. From any computer on your network or VPN you get:
 
 - **Audio processing:** noise reduction (a standard method and a neural one), automatic and manual notch, levelling
@@ -172,6 +174,8 @@ Open `http://<Pi address>:8080` in any browser: Mac, Windows, phone.
   897 can't report these either, so the panel shows what was last set over CAT, and "?" until something sets them.
   The transmit frequency is shown in amber, or red when it would be out of band or locked.
 
+<p align="center"><img src="../screenshots/3-repeater-shift-tone.png" alt="Repeater settings on the display" width="560"><br><em>FM on a 70 cm repeater: +5 MHz shift and 103.5 Hz tone shown in amber, the transmit frequency below, and Simplex to clear them.</em></p>
+
 ### 5.3 Meters
 
 - **S-meter** while receiving. With an audio client connected it is off by default, because reading it puts faint
@@ -188,6 +192,8 @@ Open `http://<Pi address>:8080` in any browser: Mac, Windows, phone.
 - Speed, brightness and contrast are remembered. While you transmit it shows your transmit audio with a red edge.
 - Up to 6 viewers at once. It stops while the browser tab is hidden.
 
+<p align="center"><img src="../screenshots/2-waterfall-filter.png" alt="Waterfall with the weak-signal preset" width="720"><br><em>A weak SSB voice with the "SSB: weak signal / DX" preset: the blue lines are the 350–2200 Hz passband, and you can drag them.</em></p>
+
 ### 5.5 Tune in voice (USB, LSB, DIG)
 
 Press **Tune in voice** while someone is talking. After 4 s or more it moves the dial so the voice sounds natural.
@@ -198,6 +204,8 @@ your transmit frequency too.
 It works from the voice's overtones, so it needs speech and does nothing when it's unsure. In simulation it was sure
 about 83% of clips at 10 dB above the noise and 56% at 0 dB, and about 1 in 60 of those were wrong, usually by
 100–250 Hz. FT8 and similar signals can fool it.
+
+<p align="center"><img src="../screenshots/5-20m-voice-overtones.png" alt="Voice overtones in the waterfall" width="720"><br><em>A 20 m voice. The evenly spaced peaks in the spectrum are the overtones that Tune in voice measures: when they line up as a natural voice, the dial is right.</em></p>
 
 ### 5.6 Scan and band scope (USB, LSB, DIG)
 
@@ -237,6 +245,8 @@ un-keys within about 1 s. After any safety un-key, a PTT that is still held does
 
 All audio settings live in the **voice client** on your laptop. They're remembered in `~/.ft897-audio.json` and
 changed from the panel's **Audio & filters** tab. Double-click a slider to put it back to its default.
+
+<p align="center"><img src="../screenshots/4-audio-controls.png" alt="Audio and filters tab" width="720"><br><em>The Audio & filters tab: receive on the left, transmit on the right. (Taken before the Noise method choice was added; it now sits below the sliders.)</em></p>
 
 ### 6.1 Receive
 
@@ -282,6 +292,14 @@ Record; and set the radio's DSP and noise blanker before you leave. A quieter an
 ## 7. Administration page reference
 
 `http://<Pi address>:8080/admin`. Nothing changes until you press **Save** (**Undo** discards your changes).
+
+<p align="center"><img src="../screenshots/6-admin-bands.png" alt="Administration: transmitting and bands" width="600"><br><em>Transmitting, bands and locked ranges. In this example, bands the antenna can't handle are locked with a reason, and 14.000–14.025 MHz is locked as Extra-only.</em></p>
+
+<p align="center"><img src="../screenshots/7-admin-high-swr.png" alt="Administration: high-SWR shutdown" width="600"><br><em>High-SWR shutdown with its default settings.</em></p>
+
+<p align="center"><img src="../screenshots/8-admin-control-and-locks.png" alt="Administration: control and locked settings" width="600"><br><em>Who may use the radio, and settings that only the administrator may change.</em></p>
+
+<p align="center"><img src="../screenshots/9-admin-levels-passwords.png" alt="Administration: sound levels and passwords" width="600"><br><em>The Pi's sound levels (12 and 2 on the author's radio) and the passwords.</em></p>
 
 | Section | Setting | Default | Notes |
 |---|---|---|---|
