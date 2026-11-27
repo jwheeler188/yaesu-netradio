@@ -35,7 +35,7 @@ from ft897_radio import parse_raw
 cfg = acc.cfg
 
 VERSION = "2026.11.27"                     # bridge build (logs, client checks)
-RELEASE = "1.0.0-beta"                     # yaesu-netradio release, shown on the panel
+RELEASE = "1.0.0-beta.2"                    # yaesu-netradio release, shown on the panel
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
