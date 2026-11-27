@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FT-897D Remote</title>
+<title>yaesu-netradio</title>
 <style>
 :root {
   --bg: #12151a; --card: #1b2027; --edge: #2a313b; --text: #e6e9ee; --dim: #8a94a3; --faint: #4a5361;
@@ -160,13 +160,15 @@ dialog label { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-
 .moderow .row { margin-top: 10px; }
 .opts { display: flex; flex-direction: column; gap: 12px; font-size: 14px; } .opts .chk { display: flex; gap: 8px; align-items: flex-start; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 6px; font-weight: 600; }
+.byline { font-size: 12px; color: var(--dim); text-decoration: none; margin: 0 8px 0 6px; white-space: nowrap; } .byline:hover { color: var(--text); text-decoration: underline; }
+.rchip { font-size: 12px; font-weight: 600; padding: 1px 7px; border: 1px solid var(--edge); border-radius: 10px; color: var(--text); margin-left: 8px; white-space: nowrap; } .rchip:empty { display: none; }
 </style>
 </head>
 <body>
 <main>
   <header>
     <span id="dot" class="dot"></span>
-    <h1 id="ttl">FT-897D Remote</h1>
+    <h1 id="ttl">yaesu-netradio</h1><span class="rchip" id="rname" title="The radio this Pi is connected to"></span><a class="byline" href="https://github.com/jwheeler188/yaesu-netradio" target="_blank" rel="noopener" title="yaesu-netradio on GitHub">by W5PL</a>
     <span id="conn" class="small">connecting…</span>
     <span class="spacer"></span>
     <span id="ctl" class="badge">Shared</span>
@@ -404,8 +406,8 @@ const R897 = { key: "ft897d", name: "FT-897D", min: 100000, max: 470e6, ticks: t
 const RD = () => S && S.radio || R897, isFM = m => m === "FM" || m === "FMN";
 let rdKey = "ft897d";
 function applyRadio(d) {
+  if (S && $("rname").textContent !== d.name) { $("rname").textContent = d.name; document.title = d.name + " · yaesu-netradio"; }
   if (d.key === rdKey) return; rdKey = d.key; const c = d.caps, hide = (id, h) => $(id).hidden = h;
-  document.title = $("ttl").textContent = d.name + " Remote";
   document.querySelectorAll("[data-band]").forEach(b => { const z = BANDS.find(x => x[0] === b.dataset.band); b.style.display = z && z[1] > d.max ? "none" : ""; });
   for (const o of [...$("rband").options]) { const z = BANDS.find(x => x[0] === o.value); if (z && z[1] > d.max) o.remove(); }
   if (!c.lsb) { Object.assign(MODE_LABEL, { PKTUSB: "DATA-U", PKTLSB: "DATA-L", FMN: "FM-N" }); $("digrow").style.display = "none"; $("digvoice").checked = false; document.querySelectorAll("[data-mode]").forEach(b => { b.textContent = MODE_LABEL[b.dataset.mode] || b.dataset.mode; b.classList.toggle("wide", b.textContent.length > 5); }); }
@@ -821,7 +823,8 @@ async function poll() {
   const radio = S && S.rig_ok && S.rig_age < 16;
   $("dot").className = "dot " + (age > 3 ? "down" : radio ? "ok" : "stale");
   $("conn").textContent = age > 3 ? "no connection to the Pi" : !S.rig_ok ? "radio not answering CAT" :
-    S.rig_age > 16 ? "waiting for the radio…" : "bridge " + S.bridge;
+    S.rig_age > 16 ? "waiting for the radio…" : S.release ? "v" + S.release : "bridge " + S.bridge;
+  $("conn").title = S && S.bridge ? "bridge build " + S.bridge : "";
   setTimeout(poll, 250);
 }
 // ---------- tabs

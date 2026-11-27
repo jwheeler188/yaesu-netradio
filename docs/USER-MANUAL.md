@@ -41,7 +41,7 @@ programs over the network, and voice from a web page with a headset.
 
 ## 1. What it does
 
-<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="720"><br><em>The web panel: waterfall and scan on top, the radio display with its meters and PTT, then Tune, Band, Mode and Filter side by side. (Taken on the simulated radio, with some bands and modes locked.)</em></p>
+<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="720"><br><em>The web panel: the radio it is connected to beside the name, waterfall and scan on top, the radio display with its meters and PTT, then Tune, Band, Mode and Filter side by side. (Taken on the simulated radio, with some bands and modes locked.)</em></p>
 
 The radio and Digirig stay at home, plugged into a Raspberry Pi. From any computer on your network or VPN you get:
 
@@ -134,21 +134,18 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
 ### 3.6 Winlink on the Pi (optional)
 
 Winlink email can run on the Pi itself, so no laptop software is needed: xara (a VARA HF-compatible modem, MIT
-licence) and [Pat](https://getpat.io) (the mail program). Once, on the Pi:
+licence, included in `third_party/xara`) and [Pat](https://getpat.io) (the mail program).
 
-1. `sudo apt install libasound2-dev build-essential pkg-config`, and Pat: better its own package from
-   [github.com/la5nta/pat/releases](https://github.com/la5nta/pat/releases) (`pat_<version>_linux_arm64.deb`, then
-   `sudo apt install ./pat_…deb`) than Ubuntu 24.04's `pat` 0.15.1, which has no settings page in its web screen (it came in
-   0.17). The bridge finds either (`pat`, or `pat-winlink` as Ubuntu names it).
-2. The loopback sound card, which joins xara and the bridge, at every boot:
-   `echo "options snd-aloop index=10 id=Loopback pcm_substreams=2" | sudo tee /etc/modprobe.d/snd-aloop.conf`,
-   `echo snd-aloop | sudo tee /etc/modules-load.d/snd-aloop.conf`, `sudo modprobe snd-aloop`. Index 10 keeps the other
-   sound cards' numbers.
-3. xara: Rust 1.85 or newer from [rustup.rs](https://rustup.rs) (no sudo), then in xara's source folder
-   `cargo build --release -p xara --no-default-features --features alsa` (about 3 minutes on a Pi 4) and
-   `install -m 755 target/release/xara ~/.local/bin/xara`. xara's original project closed in November
-   2026; build it from a copy of its source.
-4. Restart the bridge. The panel's **Winlink** tab says "Not ready: …" until all three are there.
+- **The easy way:** `./install.sh` asks "Also set up Winlink email on this Pi?". Or run `pi/winlink-install.sh` any time.
+  It installs the build tools and Pat, adds the loopback sound card that joins xara and the bridge (card 10, so the
+  other sound cards keep their numbers), offers to install Rust with rustup if Rust 1.85 or newer isn't there (about
+  250 MB in your home folder, no sudo, checked against its published checksum), builds xara with no internet (about
+  3 minutes on a Pi 4) and installs it as `~/.local/bin/xara`. Steps already done are skipped.
+- **Pat:** Ubuntu 24.04's own `pat` is 0.15.1, which has no settings page. For a newer one, put Pat's package
+  (`pat_<version>_linux_arm64.deb` from [github.com/la5nta/pat/releases](https://github.com/la5nta/pat/releases)) in the
+  `winlink/` folder before running the installer. A newer xara source archive (`xara….zip` / `.tar.gz`) there is used
+  instead of the bundled one. Git ignores everything in `winlink/`.
+- Then restart the bridge if it was already running. The panel's **Winlink** tab says "Not ready: …" until all is there.
 
 See [5.11](#511-winlink-email) for using it.
 
@@ -302,6 +299,8 @@ single carrier switched on and off: CW, as clean as from the KEY jack. The displ
 the air, and band locks check that. Sending needs no voice client; you need it to listen. The radio's own **CW** and
 **CWR** buttons stay for listening with its CW filter (they would need a key in the KEY jack to send).
 
+<p align="center"><img src="../screenshots/12-cw-keyer.png" alt="The CW keyer" width="720"><br><em>The CW keyer sending typed text: what has gone out is grey, the rest is highlighted. The settings row, the received text on the left and the Send box with its buttons on the right.</em></p>
+
 - **Keys:** **Space** (or holding the PTT button) is a straight key in every setting. **← →** work as a **bug** (hold
   ← for a stream of dits, → for a dah as long as you hold it) or as **iambic paddles** (← dit, → dah; squeeze for
   alternating). In CW keyer mode ↑ ↓ tune instead of ← →.
@@ -324,6 +323,8 @@ the air, and band locks check that. Sending needs no voice client; you need it t
 
 With [Winlink on the Pi](#36-winlink-on-the-pi-optional) installed, the **Winlink** tab has your call sign, grid,
 VARA bandwidth (500, 2300 or 2750) and **Drive** (start at −12 dBFS and check for no ALC, as with WSJT-X).
+
+<p align="center"><img src="../screenshots/13-winlink-tab.png" alt="The Winlink tab" width="720"><br><em>The Winlink tab while Winlink runs: xara, Pat and the audio link are up, with their latest log lines below.</em></p>
 
 1. **Start Winlink.** If the voice client is connected, the panel asks to stop it: there is one audio link at a time.
    The radio goes to DIG.

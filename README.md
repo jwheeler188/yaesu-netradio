@@ -1,5 +1,7 @@
 # yaesu-netradio: W5PL FT-897D / FT-891 network radio
 
+<p align="center"><img src="screenshots/1-panel-20m.png" alt="The web panel" width="720"><br><em>The web panel: waterfall, scan, the radio display with meters and PTT, then Tune, Band, Mode and Filter. Also: CW keyer, Winlink email, repeaters and favorites.</em></p>
+
 Runs a Yaesu FT-897D (or FT-891, see the end) with a Digirig from a Raspberry Pi, so WSJT-X / VARA / Pat on a Mac
 **or** Windows laptop can use it from anywhere in the house, or from away over a VPN, and anyone can operate voice
 from a web page with a headset. In the examples below **192.168.1.50** stands for your Pi's address: use its number
@@ -146,7 +148,8 @@ following a station's speed and up to ~150 Hz of offset. Sending needs no voice 
 
 **Winlink on the Pi** (optional, Winlink tab): xara (VARA HF-compatible modem) and Pat run on the Pi; open Pat's mailbox in the
 browser, connect to a gateway, Pat tunes the radio. xara reaches the radio through a loopback sound card and the bridge's own audio
-and CAT ports, so every lock and safety check applies. Setup: manual section 3.6.
+and CAT ports, so every lock and safety check applies. xara's source comes with this project (`third_party/xara`);
+`./install.sh` offers to build it, or run `pi/winlink-install.sh`. Manual section 3.6.
 
 **Repeaters and favorites:** one click sets frequency, mode, shift, offset and CTCSS or DCS. The list is kept on the Pi
 (`pi/repeaters.json`), so every panel shows the same one. Import the CSV you export from your own RepeaterBook account
@@ -238,6 +241,8 @@ still transmitting after it stopped answering is un-keyed at once.
 
 GPL-3.0 (see `LICENSE`), by W5PL. Uses [Hamlib](https://hamlib.github.io) (`rigctld`, run as a separate program),
 [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/) and [pyserial](https://github.com/pyserial/pyserial), and
-includes [RNNoise](https://github.com/xiph/rnnoise) 0.2 (BSD licence, `client/rnnoise/COPYING`). Repeater data, if you
+includes [RNNoise](https://github.com/xiph/rnnoise) 0.2 (BSD licence, `client/rnnoise/COPYING`) and xara 0.1.3 by x0rro, a
+VARA-compatible modem (MIT licence, `third_party/xara/LICENSE`, unmodified, with the Rust libraries it builds with; see
+`third_party/xara/ABOUT-THIS-COPY.md`). Thanks to x0rro for xara. Repeater data, if you
 import it, comes from your own RepeaterBook.com export and stays on your Pi. Not affiliated with Yaesu or Digirig.
 

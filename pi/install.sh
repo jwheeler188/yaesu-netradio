@@ -22,6 +22,15 @@ sudo apt-get update -q
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q libhamlib-utils alsa-utils python3-serial
 rigctld --version
 
+# Winlink on the Pi (optional): always when something was put in ../winlink/, otherwise asked once xara isn't installed yet
+wl=""
+if ls "$HERE/../winlink/"xara* "$HERE/../winlink/"pat_*.deb >/dev/null 2>&1; then wl=1
+elif [[ ! -x "$HOME/.local/bin/xara" && -t 0 ]]; then
+  read -r -p "Also set up Winlink email on this Pi (xara + Pat, about 5 minutes)? [y/N] " a; [[ "$a" == [yY]* ]] && wl=1
+fi
+if [[ -n "$wl" ]]; then bash "$HERE/winlink-install.sh" || say "Winlink setup did not finish (see above); the radio bridge is installed anyway"
+else say "Winlink email on the Pi: run pi/winlink-install.sh whenever you like"; fi
+
 # ModemManager probes new USB serial ports with AT commands; keep it away from the Digirig's CP2102 (ea60) and the FT-891's CP2105 (ea70)
 say "Telling ModemManager to leave the Digirig serial port alone ($RULE)"
 printf '%s\n' 'ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ENV{ID_MM_DEVICE_IGNORE}="1"' 'ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea70", ENV{ID_MM_DEVICE_IGNORE}="1"' | sudo tee "$RULE" >/dev/null

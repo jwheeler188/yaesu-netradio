@@ -34,7 +34,8 @@ import ft897_radio as radios
 from ft897_radio import parse_raw
 cfg = acc.cfg
 
-VERSION = "2026.11.27"
+VERSION = "2026.11.27"                     # bridge build (logs, client checks)
+RELEASE = "1.0.0-beta"                     # yaesu-netradio release, shown on the panel
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
@@ -1022,7 +1023,7 @@ def wl_load():
 def wl_clean(j):
     if not isinstance(j, dict): return
     c = str(j.get("call", wlset["call"]) or "").strip().upper()
-    if re.fullmatch(r"[A-Z0-9]{3,7}(-[0-9]{1,2})?", c) or c == "": wlset["call"] = c
+    if re.fullmatch(r"[A-Z0-9]{1,3}[0-9][A-Z]{1,3}(-[0-9]{1,2})?", c) or c == "": wlset["call"] = c      # (as xara checks it)
     g = str(j.get("locator", wlset["locator"]) or "").strip()
     if re.fullmatch(r"[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?", g) or g == "": wlset["locator"] = g[:2].upper() + g[2:4] + g[4:].lower()
     if j.get("bw") in (500, 2300, 2750): wlset["bw"] = j["bw"]
@@ -1680,7 +1681,7 @@ def state_for(ip, role=""):
         cats = [{"ip": v["ip"], "name": host_name(v["ip"]), "since": int(now - v["since"])}
                 for v in st["cat_clients"].values() if v["ip"] != "127.0.0.1"]
         panels = [{"ip": k, "name": v["name"]} for k, v in st["panels"].items() if now - v["seen"] < 5]
-        return {"bridge": VERSION, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB" if st["lsb"] else "DCW", "dial": st["rig"].get("freq")} if st["lsb"] or st["cw"] else dict(st["rig"]), "lsb": st["lsb"], "cw": cw_state(), "winlink": wl_state(), "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
+        return {"bridge": VERSION, "release": RELEASE, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB" if st["lsb"] else "DCW", "dial": st["rig"].get("freq")} if st["lsb"] or st["cw"] else dict(st["rig"]), "lsb": st["lsb"], "cw": cw_state(), "winlink": wl_state(), "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
                 "rig_age": round(now - st["rig"].get("ts", 0), 1), "rit": st["rit"], "smeter_live": st.get("smeter_live", False),
                 "rep_v": rep["v"], "dcs_codes": DCS, "listening": st["audio"] is not None,
                 "client": st.get("client") if st["audio"] is not None and now - st.get("client_ts", 0) < 5 else None,
@@ -1882,7 +1883,7 @@ if __name__ == "__main__":
     acc.load(); rpt_load(); cw_load(); wl_load(); cw_dec.set_f(cwset["pitch"])
     if acc.problem: log(acc.problem + ": no transmitting until the administration page is saved")
     signal.signal(signal.SIGTERM, on_stop); signal.signal(signal.SIGINT, on_stop)
-    log(f"W5PL FT-897D network bridge {VERSION}" + (f", radio {RADIO.name}" if RADIO.key != "ft897d" else "") + (" (DUMMY test mode)" if a.dummy else ""))
+    log(f"W5PL FT-897D network bridge {VERSION} (yaesu-netradio {RELEASE})" + (f", radio {RADIO.name}" if RADIO.key != "ft897d" else "") + (" (DUMMY test mode)" if a.dummy else ""))
     def supervised(fn):
         while True:                            # a bug in one part must not silently stop it (or the watchdog)
             try: fn()

@@ -5,7 +5,7 @@ __pycache__/
 macOS/.venv/
 macOS/.arch
 server.txt
-dist/
+/dist/
 recordings/
 
 # kept on each Pi, never shared: settings, password hashes, the repeater list (RepeaterBook data may not be redistributed), logs
@@ -21,6 +21,10 @@ pi/tx.raw
 pi/*.tmp
 pi/log.txt
 pi/backup-*/
+
+# Winlink drop folder: what you put in it stays yours
+winlink/*
+!winlink/README.md
 
 # personal tools
 pi/tools/wifi24.sh

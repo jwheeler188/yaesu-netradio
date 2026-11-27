@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FT-897D Administration</title>
+<title>Administration · yaesu-netradio</title>
 <style>
 :root { --bg: #12151a; --card: #1b2027; --edge: #2a313b; --text: #e6e9ee; --dim: #8a94a3; --accent: #5fb3ff; --good: #4cc38a; --warn: #f0b429; --bad: #ef5350; --btn: #252c36; --btnhover: #2f3844; }
 @media (prefers-color-scheme: light) { :root { --bg: #eef1f5; --card: #fff; --edge: #d5dbe3; --text: #1b2027; --dim: #5d6775; --btn: #e9edf2; --btnhover: #dde3ea; --accent: #1769aa; --good: #19794d; --warn: #9a6a00; --bad: #c62828; } }
@@ -29,11 +29,13 @@ td label { display: flex; gap: 7px; align-items: center; white-space: nowrap; fo
 #bar div { max-width: 828px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 form.pw label { display: grid; grid-template-columns: 210px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; max-width: 560px; } a { color: var(--accent); }
 @media (max-width: 520px) { form.pw label { grid-template-columns: 1fr; gap: 2px; } }
+.byline { font-size: 12px; color: var(--dim); text-decoration: none; margin: 0 8px 0 6px; white-space: nowrap; } .byline:hover { color: var(--text); text-decoration: underline; }
+.rchip { font-size: 12px; font-weight: 600; padding: 1px 7px; border: 1px solid var(--edge); border-radius: 10px; color: var(--text); margin-left: 8px; white-space: nowrap; } .rchip:empty { display: none; }
 </style>
 </head>
 <body>
 <main>
-<header><h1 id="ttl">FT-897D Administration</h1><span class="spacer"></span><a href="/">Radio panel</a><button id="out" hidden>Sign out</button></header>
+<header><h1 id="ttl">yaesu-netradio</h1><span class="rchip" id="rname" title="The radio this Pi is connected to"></span><span class="byline" style="margin-left:8px">Administration</span><a class="byline" href="https://github.com/jwheeler188/yaesu-netradio" target="_blank" rel="noopener" title="yaesu-netradio on GitHub">by W5PL</a><span class="spacer"></span><a href="/">Radio panel</a><button id="out" hidden>Sign out</button></header>
 
 <div class="card" id="first" hidden><h2>Set the administrator password</h2>
   <p class="help">This password protects this page: band locks, the high-SWR shutdown and who may use the radio. Use one you don't use anywhere else: this page is not encrypted on your network. If you forget it, delete <code>passwords.json</code> on the Pi.</p>
@@ -108,7 +110,8 @@ async function post(path, body) {
 }
 async function load() {
   try { D = await (await fetch("/api/admin", { cache: "no-store" })).json(); } catch (e) { $("msign").textContent = "no connection to the Pi"; $("signin").hidden = false; return; }
-  if (D.radio && D.radio.key !== "ft897d") { document.title = $("ttl").textContent = D.radio.name + " Administration"; $("swrnote").textContent = "1 to 15. On the " + D.radio.name + " step 7 is about 2.4:1 (approximate); a good antenna shows 0 to 2."; }
+  if (D.radio) { $("rname").textContent = D.radio.name; document.title = "Administration · " + D.radio.name + " · yaesu-netradio"; }
+  if (D.radio && D.radio.key !== "ft897d") { $("swrnote").textContent = "1 to 15. On the " + D.radio.name + " step 7 is about 2.4:1 (approximate); a good antenna shows 0 to 2."; }
   const ad = D.role === "admin"; $("first").hidden = D.admin_set; $("signin").hidden = ad || !D.admin_set; $("app").hidden = !ad; $("out").hidden = !D.role;
   if (D.role === "oper") $("msign").textContent = "You are signed in as operator. This page needs the administrator password.";
   if (!ad) { $("bar").style.display = "none"; return; }
