@@ -18,6 +18,11 @@ pi/winlink.json
 pi/pat-config.json
 pi/xara-state/
 pi/tx.raw
+pi/aprs.json
+pi/aprs-messages.json
+pi/aprs-secret.json
+pi/aprs-run/
+pi/maps/
 pi/*.tmp
 pi/log.txt
 pi/backup-*/

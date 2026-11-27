@@ -91,7 +91,18 @@ a.btn { color: var(--dim); font-size: 13px; text-decoration: none; padding: 4px 
 #cwsent { color: var(--dim); } #cwqueue { color: var(--text); background: rgba(255,180,84,.12); }
 #cwstat i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--edge); margin: 0 4px -1px 6px; } #cwstat i.on { background: #8dffb0; }
 #cwerr { color: var(--bad); }
-#wlopen { border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); padding: 6px 12px; font-size: 14px; }
+.apbadge { background: var(--bad); color: #fff; border-radius: 9px; font-size: 11px; padding: 0 6px; margin-left: 5px; }
+.apgrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 10px; } @media (max-width: 900px) { .apgrid { grid-template-columns: 1fr; } }
+.aptbl { max-height: 300px; overflow: auto; font-size: 13px; } .aptbl table { width: 100%; border-collapse: collapse; } .aptbl td, .aptbl th { padding: 3px 6px; border-bottom: 1px solid var(--edge); text-align: left; white-space: nowrap; }
+.aptbl td.c { white-space: normal; color: var(--dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; } .aptbl tr { cursor: pointer; } .aptbl tr:hover td { background: var(--btn); }
+.call { font-weight: 600; padding: 0 5px; border-radius: 4px; border: 2px solid transparent; } .call.is { border-color: #4aa3ff; }
+.apis { color: #4aa3ff; } .aptx { color: var(--warn); }
+.aplist { max-height: 220px; overflow: auto; font-size: 13px; border: 1px solid var(--edge); border-radius: 6px; padding: 6px; margin-bottom: 6px; }
+.aplist .m { margin: 3px 0; } .aplist .out { text-align: right; } .aplist .m span.b { display: inline-block; padding: 3px 8px; border-radius: 8px; background: var(--btn); max-width: 85%; text-align: left; white-space: pre-wrap; } .aplist .out span.b { background: rgba(95,179,255,.18); }
+.aplist .m small { color: var(--dim); margin: 0 5px; }
+.appk { max-height: 170px; overflow: auto; font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; background: var(--lcd); color: var(--lcdtext); border-radius: 6px; padding: 6px 8px; margin: 4px 0 6px; white-space: pre-wrap; word-break: break-all; }
+.appk .is { color: #8cc8ff; } .appk .tx { color: #ffb454; }
+#apopen, #wlopen { border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); padding: 6px 12px; font-size: 14px; }
 #cwmacs button { font-size: 13px; }
 .msg { min-height: 18px; font-size: 13px; color: var(--warn); margin-top: 8px; }
 .fm { display: none; } .fm.show { display: flex; }
@@ -304,7 +315,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
   </div>
 
   <div class="card">
-    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button><button data-tab="wl">Winlink</button><button data-tab="opt">Options</button><button data-tab="conn">Connected</button></div>
+    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button><button data-tab="wl">Winlink</button><button data-tab="aprs">APRS<span id="apbadge" class="apbadge" hidden></span></button><button data-tab="opt">Options</button><button data-tab="conn">Connected</button></div>
     <div class="pane" id="pane-audio">
       <div class="small" id="audinfo"></div>
       <div class="ctl2" id="audctl">
@@ -344,7 +355,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     <div class="pane" id="pane-wl">
       <div class="small" id="wlstat">–</div>
       <div class="row"><label class="t">Call sign</label><input id="wlcall" style="width:110px;text-transform:uppercase" autocomplete="off" spellcheck="false">
-        <span class="small">Grid</span><input id="wlloc" style="width:80px" placeholder="EM20" autocomplete="off" spellcheck="false">
+        <span class="small">Grid</span><input id="wlloc" style="width:80px" placeholder="DM79" autocomplete="off" spellcheck="false">
         <span class="small">Bandwidth</span><select id="wlbw"><option value="500">VARA 500</option><option value="2300">VARA 2300</option><option value="2750">VARA 2750</option></select>
         <span class="small">Drive</span><input type="range" id="wldrive" min="-30" max="0" step="1" style="width:100px" aria-label="Drive"><span id="wldrivev" class="small" style="min-width:56px"></span></div>
       <div class="row"><button id="wlgo" class="primary">Start Winlink</button><button id="wlstop">Stop Winlink</button><a class="btn" id="wlopen" target="_blank" rel="noopener" hidden>✉ Open the mailbox (Pat)</a></div>
@@ -352,6 +363,12 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         Connect → VARA HF and pick a gateway: Pat tunes the radio. Pat asks for your Winlink password the first time; it stays on the Pi.
         While Winlink runs the voice client can't connect (one audio link at a time) and the radio stays in DIG. Every transmit lock and safety check still applies.</div>
       <pre id="wllog" style="max-height:150px;overflow:auto;font-size:12px;background:var(--lcd);color:var(--lcdtext);border-radius:6px;padding:6px 8px;margin:8px 0 0;white-space:pre-wrap"></pre>
+    </div>
+    <div class="pane" id="pane-aprs">
+      <div class="small" id="apstat">–</div>
+      <div class="row"><a class="btn" id="apopen" href="/aprs" target="_blank" rel="noopener">🗺 Open the APRS page</a><button id="apgo" class="primary">Start APRS</button><button id="apstop">Stop APRS</button></div>
+      <div class="small" style="margin-top:8px">APRS runs on the Pi with Dire Wolf. Its own page has the map, stations, messages, packets and your station settings;
+        keep it open on another screen or tablet. While APRS runs it has the radio to itself (like Winlink). The digipeater and iGate are set on the administration page.</div>
     </div>
     <div class="pane" id="pane-opt">
       <div class="opts">
@@ -817,6 +834,7 @@ async function poll() {
   try {
     const r = await fetch("/api/state", { headers: headers(), cache: "no-store" });
     S = await r.json(); lastOk = Date.now(); render(); wlRender();
+    if (S.aprs) { $("apbadge").hidden = !S.aprs.unread; $("apbadge").textContent = S.aprs.unread; apRender(); }
   } catch (e) { }
   try { renderAudio(); repSync(); } catch (e) { console.error(e); }
   const age = (Date.now() - lastOk) / 1000;
@@ -831,7 +849,21 @@ async function poll() {
 function tab(t) { document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll(".pane").forEach(p => p.classList.toggle("show", p.id === "pane-" + t)); store("ft897.tab", t); }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => tab(b.dataset.tab));
-tab(["audio", "fav", "reps", "wl"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
+tab(["audio", "fav", "reps", "wl", "aprs"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
+// ---------- APRS on the Pi (Dire Wolf): the full view is its own page, /aprs
+$("apgo").onclick = () => {
+  if (S && S.audio && S.audio.ip !== "127.0.0.1") { if (!confirm("The voice client on " + S.audio.name + " is connected. Stop it and start APRS?")) return; return post("/api/aprs", { op: "start", stop_voice: true }); }
+  post("/api/aprs", { op: "start" });
+};
+$("apstop").onclick = () => post("/api/aprs", { op: "stop" });
+function apRender() {
+  const a = S && S.aprs; if (!a) return;
+  $("apstat").textContent = a.missing ? "Not ready: " + a.missing : a.on ? `APRS is running as ${a.call}` + (a.by ? `, started by ${a.by}` : "") + ` · ${a.heard} stations` + (a.unread ? ` · ${a.unread} unread message${a.unread > 1 ? "s" : ""}` : "") + (a.net === false ? " · no internet" : "")
+    : a.call ? "APRS is off." : "APRS is off. Set your call sign on the APRS page first.";
+  $("apstat").style.color = a.missing || a.err ? "var(--warn)" : ""; if (a.err) $("apstat").textContent += " · " + a.err;
+  $("apgo").hidden = a.on; $("apstop").hidden = !a.on;
+}
+
 // ---------- Winlink on the Pi (xara + Pat)
 let wlSetAt = 0;
 const wlSet = o => { wlSetAt = Date.now(); post("/api/winlink", { op: "set", ...o }); };

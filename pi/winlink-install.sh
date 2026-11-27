@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# W5PL FT-897D network radio - set up Winlink on the Pi: xara (VARA HF modem) and Pat (mail).
+# W5PL FT-897D network radio - set up Winlink on the Pi: xara (VARA HF modem) and Pat (mail); also Dire Wolf for APRS.
 #   pi/winlink-install.sh       builds the copy of xara in third_party/xara (no internet needed for that part)
 #   A newer xara source archive (xara*.zip, xara*.tar.gz or xara*.tgz) or Pat's own package (pat_*_linux_arm64.deb from
 #   github.com/la5nta/pat/releases) put in winlink/ next to pi/ is used instead. ./install.sh asks whether to run this.
@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DROP="$(cd "$HERE/.." && pwd)/winlink"; BUNDLED="$(cd "$HERE/.." && pwd)/third_party/xara"
 say() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[31mWinlink setup stopped:\033[0m %s\n' "$*"; exit 1; }
-need_pkgs=(); for p in libasound2-dev build-essential pkg-config; do dpkg -s "$p" >/dev/null 2>&1 || need_pkgs+=("$p"); done
+need_pkgs=(); for p in libasound2-dev build-essential pkg-config direwolf; do dpkg -s "$p" >/dev/null 2>&1 || need_pkgs+=("$p"); done
 
 SRC=$(ls -t "$DROP"/xara*.zip "$DROP"/xara*.tar.gz "$DROP"/xara*.tgz 2>/dev/null | head -1 || true)
 PATDEB=$(ls -t "$DROP"/pat_*_linux_arm64.deb "$DROP"/pat_*_linux_*.deb 2>/dev/null | head -1 || true)

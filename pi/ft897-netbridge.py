@@ -29,13 +29,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ft897_access as acc
 from ft897_lsb import Invert, PIVOT
 import ft897_cw as cwm
+import ft897_aprs as aprs
+import ft897_maps as maps
 from ft897_tap import TickClean
 import ft897_radio as radios
 from ft897_radio import parse_raw
 cfg = acc.cfg
 
 VERSION = "2026.11.27"                     # bridge build (logs, client checks)
-RELEASE = "1.0.0-beta.2"                    # yaesu-netradio release, shown on the panel
+RELEASE = "1.0.0-beta.3"                    # yaesu-netradio release, shown on the panel
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
@@ -843,10 +845,17 @@ def rx_loop():
     if a.card == "null":                       # test mode: a paced 1 kHz tone at -20 dBFS stands in for the radio
         import math
         tone = b"".join(struct.pack("<h", int(3276 * math.sin(2 * math.pi * 1000 * i / a.rate))) for i in range(FRAME // 2))
-        t = time.time()
+        t = time.time(); RXF = os.environ.get("FT897_RX_FILE", ""); rxd, rxm, rxp = b"", 0, 0
         while True:
             t += FRAME_MS / 1000; time.sleep(max(0, t - time.time()))
-            d = inv_rx.process(tone) if st["lsb"] else tone
+            d = tone
+            if RXF and os.path.exists(RXF):            # test mode: what the "radio" hears comes from a file (once each time it changes, then silence)
+                try:
+                    m = os.stat(RXF).st_mtime_ns
+                    if m != rxm: rxm = m; rxd = open(RXF, "rb").read(); rxp = 0
+                except OSError: rxd = b""
+                d = rxd[rxp:rxp + FRAME].ljust(FRAME, b"\0"); rxp += FRAME
+            d = inv_rx.process(d) if st["lsb"] else d
             if st["audio"] is not None: audio_send(b"A", d)
             if taps and not st["keyed"]: tap_feed(b"R", d)
             cw_rx_feed(d)
@@ -895,7 +904,8 @@ def tx_loop():
             while pr.poll() is None:
                 if st["keyed"] and cw_mine() and st["cw"]:     # the CW keyer: a keyed tone, made here
                     now = time.time()
-                    if gen_t is None or abs(gen_t - (now + LAT)) > 0.08: gen_t = now + LAT
+                    if gen_t is None: gen_t = now + LAT
+                    elif abs(gen_t - (now + LAT)) > 0.08 and tone.env == 0 and not cwtl.state_at(gen_t): gen_t = now + LAT   # catch up after a stall only in silence: a dit or dah is never cut short
                     chunk = tone.frame(gen_t, FRAME // 2, cwtl, st["cw"], cw_amp()); gen_t += FRAME_MS / 1000
                     smp = array.array("h", chunk); pk = max(max(smp), -min(smp))
                     with lock:
@@ -1075,6 +1085,7 @@ def wl_pat_config():
     return path
 def wl_start(ip, stop_voice=False):
     if wl_running(): return 0, ""
+    if ap_running(): return 1, "stop APRS first: both need the audio link"
     why = wl_missing()
     if why: return 1, why
     if not wlset["call"]: return 1, "enter your call sign first"
@@ -1143,6 +1154,379 @@ def wl_op(ip, j):
     if op == "start": return wl_start(ip, j.get("stop_voice") is True)
     if op == "stop": threading.Thread(target=wl_stop, args=(f"by {label_of(ip)}",), daemon=True).start(); return 0, ""
     return 1, "unknown Winlink command"
+
+# ---------------------------------------------------------------- APRS on the Pi: Dire Wolf (modem, digipeater, iGate) + this client
+# Dire Wolf sits on the loopback card like xara and keys the radio through the bridge's CAT port, so every lock applies. Its network
+# ports are off (they can't be limited to this Pi); the bridge talks KISS to it over a pseudo terminal only it can open.
+APRS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs.json")
+APRS_MSGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs-messages.json")
+APRS_RUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs-run") if a.dummy else os.path.expanduser("~/.local/state/ft897-aprs")
+TOCALL = "APZYNR"                                  # experimental software id: yaesu-netradio
+APDEF = {"call": "", "sym": "/-", "comment": "yaesu-netradio", "beacon": 30, "lat": None, "lon": None, "freq": 144_390_000,
+         "path": "WIDE1-1,WIDE2-1", "mode": "FM", "show_is": True, "is_km": 100}
+apset = dict(APDEF)
+ap = {"procs": {}, "by": None, "since": 0.0, "log": collections.deque(maxlen=80), "err": "", "stopping": False, "fd": None, "pty": None,
+      "net": None, "net_at": 0.0, "stations": {}, "pk": collections.deque(maxlen=300), "msgs": [], "seq": 1, "bln": {}, "is_on": False, "unread": 0,
+      "echo": None}                                 # our own packet heard back: {"t", "via", "src"}
+def ap_echo(p, src):
+    """Our own packet came back: repeated by a digipeater (rf), or gated to APRS-IS (is). Proof it got out; not a station."""
+    path = p.get("path") or []
+    if src == "rf": via = [x.rstrip("*") for x in path if x.endswith("*") and not re.match(r"^WIDE\d|^TRACE|^RELAY", x)] or ["a digipeater"]
+    else: via = [path[path.index(q) + 1] for q in path if q.upper() in ("QAR", "QAO", "QAS", "QAC") and path.index(q) + 1 < len(path)] or ["an iGate"]
+    with ap_lock:
+        ap["echo"] = {"t": time.time(), "via": ", ".join(via), "src": src}
+        ap["pk"].append({"t": time.time(), "src": "echo", "line": aprs.tnc2(p)[:240], "kind": "echo", "via": ", ".join(via)})
+ap_lock = threading.Lock()
+def ap_clean(j):
+    """Copies valid station settings from j. -> "" or what was wrong"""
+    if not isinstance(j, dict): return "bad settings"
+    bad = []
+    if "call" in j:
+        c = str(j["call"] or "").strip().upper()
+        if c == "" or re.fullmatch(r"[A-Z0-9]{1,3}[0-9][A-Z]{1,3}(-([0-9]|1[0-5]))?", c): apset["call"] = c
+        else: bad.append("call sign (e.g. W5PL-10)")
+    if isinstance(j.get("sym"), str) and len(j["sym"]) == 2 and all(33 <= ord(x) <= 126 for x in j["sym"]) and j["sym"][0] in "/\\0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ": apset["sym"] = j["sym"]
+    if "comment" in j: apset["comment"] = re.sub(r"[|~\r\n]", " ", str(j["comment"] or ""))[:40]
+    if isinstance(j.get("beacon"), (int, float)) and not isinstance(j["beacon"], bool): apset["beacon"] = 0 if j["beacon"] <= 0 else int(max(10, min(120, j["beacon"])))
+    if "grid" in j and str(j["grid"] or "").strip():
+        try: apset["lat"], apset["lon"] = aprs.grid_to_latlon(str(j["grid"]))
+        except ValueError: bad.append("grid square (e.g. DM79mp)")
+    for k, lo, hi in (("lat", -90, 90), ("lon", -180, 180)):
+        if k in j and j[k] is not None:
+            try:
+                v = float(j[k])
+                if lo <= v <= hi: apset[k] = round(v, 5)
+                else: bad.append(k)
+            except (TypeError, ValueError): bad.append(k)
+    if isinstance(j.get("freq"), (int, float)) and 144_000_000 <= j["freq"] <= 148_000_000 or isinstance(j.get("freq"), (int, float)) and 420_000_000 <= j["freq"] <= 450_000_000: apset["freq"] = int(j["freq"])
+    elif "freq" in j: bad.append("frequency (2 m or 70 cm)")
+    if "path" in j:
+        p = str(j["path"] or "").upper().replace(" ", "")
+        if p == "" or re.fullmatch(r"([A-Z0-9]{1,6}(-[0-9]{1,2})?)(,[A-Z0-9]{1,6}(-[0-9]{1,2})?){0,2}", p): apset["path"] = p
+        else: bad.append("path (e.g. WIDE1-1,WIDE2-1)")
+    if j.get("mode") in ("FM", "PKT"): apset["mode"] = j["mode"]
+    if isinstance(j.get("show_is"), bool): apset["show_is"] = j["show_is"]
+    if isinstance(j.get("is_km"), (int, float)) and not isinstance(j["is_km"], bool): apset["is_km"] = int(max(10, min(500, j["is_km"])))
+    return ("check the " + ", ".join(bad)) if bad else ""
+def ap_load():
+    try:
+        with open(APRS_FILE) as f: ap_clean(json.load(f))
+    except (OSError, ValueError, TypeError): pass
+    try:
+        with open(APRS_MSGS) as f: j = json.load(f)
+        ap["msgs"] = [m for m in j.get("msgs", []) if isinstance(m, dict)][-500:]; ap["seq"] = int(j.get("seq", 1))
+    except (OSError, ValueError, TypeError): pass
+def ap_save():
+    try:
+        with open(APRS_FILE + ".tmp", "w") as f: json.dump(apset, f)
+        os.replace(APRS_FILE + ".tmp", APRS_FILE)
+    except OSError as e: log(f"aprs.json not saved: {e}")
+def ap_save_msgs():
+    try:
+        with ap_lock: j = {"msgs": ap["msgs"][-500:], "seq": ap["seq"]}
+        with open(APRS_MSGS + ".tmp", "w") as f: json.dump(j, f)
+        os.replace(APRS_MSGS + ".tmp", APRS_MSGS)
+    except OSError as e: log(f"aprs-messages.json not saved: {e}")
+def ap_running():
+    with ap_lock: return bool(ap["procs"])
+def ap_missing():
+    if not shutil.which("direwolf"): return "Dire Wolf is not installed (sudo apt install direwolf)"
+    if not a.dummy and not os.path.exists("/proc/asound/Loopback"): return "the loopback sound card is not there (pi/winlink-install.sh adds it)"
+    return ""
+def ap_conf():
+    """Dire Wolf's configuration from the station settings (panel) and the digipeater / iGate settings (administration page)."""
+    A = cfg["aprs"]; c = apset["call"]
+    # (ADEVICE = LOOP_IN / LOOP_OUT in short form: Dire Wolf cuts device names at 30 characters)
+    L = ["ADEVICE plughw:Loopback,1,0 plughw:Loopback,0,1", "ARATE 48000", "ACHANNELS 1", "CHANNEL 0", f"MYCALL {c}", "MODEM 1200",
+         f"PTT RIG 2 localhost:{a.cat_port}", "TXDELAY 30", "TXTAIL 10", "AGWPORT 0", "KISSPORT 0", "DEDUPE 30"]
+    al = [x for x in re.split(r"[ ,]+", A["aliases"].upper()) if re.fullmatch(r"[A-Z0-9]{1,6}(-[0-9]{1,2})?", x)]
+    extra = "".join(f"|^{x}$" for x in al)
+    if A["digi"] == "fillin": L.append(f"DIGIPEAT 0 0 ^WIDE1-1${extra} ^WIDE1-1$")
+    elif A["digi"] == "wide": L.append(f"DIGIPEAT 0 0 ^WIDE[3-7]-[1-7]$|^TEST${extra} ^WIDE[12]-[12]$ TRACE")
+    if A["igate"] != "off" and acc.aprs_pass():
+        L += [f"IGSERVER {A['server']}", f"IGLOGIN {c} {acc.aprs_pass()}"]
+        if A["igate"] == "rxtx": L += ["IGTXVIA 0 WIDE1-1", "IGTXLIMIT 6 10"]
+    if apset["beacon"] and apset["lat"] is not None:
+        cm = apset["comment"].replace('"', "'")
+        L.append(f'PBEACON delay=1 every={apset["beacon"]} symbol="{apset["sym"]}" lat={apset["lat"]} long={apset["lon"]} comment="{cm}"' + (f" via={apset['path']}" if apset["path"] else ""))
+    return "\n".join(L) + "\n"
+def ap_reader(name, pr):
+    for line in iter(pr.stdout.readline, b""):
+        t = line.decode(errors="replace").rstrip()
+        if not t: continue
+        m = re.search(r"Virtual KISS TNC is available on (/dev/pts/\d+)", t)
+        if m and name == "direwolf": ap["pty"] = m[1]
+        ap["log"].append(f"{time.strftime('%H:%M:%S')} {name}: {t[:200]}")
+    rc = pr.wait()
+    with ap_lock: mine = ap["procs"].get(name) is pr; stopping = ap["stopping"]
+    if mine and not stopping:
+        ap["err"] = f"{name} stopped (exit {rc}): see its log"; log(f"APRS: {name} stopped (exit {rc}); stopping the rest")
+        threading.Thread(target=ap_stop, args=(f"{name} stopped",), daemon=True).start()
+def ap_station(p, src):
+    """Remembers a station heard on the radio ("rf") or from the internet ("is")."""
+    who = p.get("name") if p.get("kind") in ("object", "item") else p.get("src")
+    if not who: return
+    now = time.time()
+    with ap_lock:
+        s = ap["stations"].setdefault(who, {"call": who, "first": now, "n": 0, "rf_last": 0.0})
+        s["last"] = now; s["n"] += 1; s["src"] = src
+        if src == "rf": s["rf_last"] = now; s["path"] = ",".join(p.get("path") or [])
+        if "lat" in p and "lon" in p:                          # a short track, for stations that move
+            tr = s.setdefault("track", []); pt = [round(p["lat"], 5), round(p["lon"], 5), int(now)]
+            if not tr or abs(tr[-1][0] - pt[0]) + abs(tr[-1][1] - pt[1]) > 0.0003: tr.append(pt); del tr[:-30]
+        if p.get("wx"): s["wx"] = p["wx"]; s["wx_t"] = int(now)
+        for k in ("lat", "lon", "comment", "speed", "course", "kind", "text", "alt_ft"):
+            if k in p and p[k] not in (None, ""): s[k] = p[k]
+        if "sym" in p: s["sym"] = (p.get("table") or "/") + p["sym"]; s.pop("sym_bad", None)
+        elif "sym_bad" in p: s["sym_bad"] = p["sym_bad"]; s.pop("sym", None)
+        if p.get("kind") in ("object", "item"): s["by"] = p.get("src"); s["obj"] = True
+        if len(ap["stations"]) > 2000:
+            for k in sorted(ap["stations"], key=lambda k: ap["stations"][k]["last"])[:200]: del ap["stations"][k]
+def ap_handle(p, src):
+    """One packet in (decoded). src: "rf" heard on the radio, "is" from APRS-IS (the internet)."""
+    p = aprs.parse(p); me = apset["call"]
+    if me and p.get("src", "").upper() == me.upper(): return ap_echo(p, src)
+    with ap_lock: ap["pk"].append({"t": time.time(), "src": src, "line": aprs.tnc2(p)[:240], "kind": p["kind"]})
+    if p["kind"] in ("position", "object", "item", "weather", "status") or "lat" in p: ap_station(p, src)
+    else: ap_station({"src": p["src"]}, src)
+    if p["kind"] in ("message", "ack", "rej") and me and p.get("to", "").upper() == me:
+        if p["kind"] == "message":
+            with ap_lock:
+                dup = any(m["dir"] == "in" and m["from"] == p["src"] and m.get("msgno") == p.get("msgno") and p.get("msgno") and time.time() - m["t"] < 1800 for m in ap["msgs"])
+                if not dup: ap["msgs"].append({"id": os.urandom(4).hex(), "t": time.time(), "dir": "in", "from": p["src"], "to": me, "text": p.get("text", ""),
+                                               "msgno": p.get("msgno"), "src": src, "state": "new"}); ap["unread"] += 1
+            if p.get("msgno"): ap_send(aprs.ack_info(p["src"], p["msgno"]), log_as="ack")       # ack every copy: the first ack may have been lost
+            if not dup: ap_save_msgs(); log(f"APRS message from {p['src']} ({src})")
+        else:
+            with ap_lock:
+                for m in ap["msgs"]:
+                    if m["dir"] == "out" and m.get("msgno") == p.get("msgno") and m["to"].upper() == p["src"].upper() and m["state"] in ("sent", "sending"):
+                        m["state"] = "acked" if p["kind"] == "ack" else "rejected"; m["done"] = time.time()
+            ap_save_msgs()
+    if p["kind"] == "bulletin":
+        with ap_lock: ap["bln"][f"{p['src']}:{p.get('to')}"] = {"t": time.time(), "from": p["src"], "id": p.get("to"), "text": p.get("text", ""), "src": src}
+def ap_send(info, log_as="send"):
+    """One frame out through Dire Wolf (it keys the radio)."""
+    fd = ap["fd"]; c = apset["call"]
+    if fd is None or not c: return "APRS is not running"
+    try:
+        path = [x for x in apset["path"].split(",") if x]
+        f = aprs.ax25_encode(c, TOCALL, path, info); os.write(fd, aprs.kiss_wrap(f))
+    except (OSError, ValueError) as e: return f"could not send: {e}"
+    with ap_lock: ap["pk"].append({"t": time.time(), "src": "tx", "line": f"{c}>{TOCALL}" + "".join("," + x for x in path) + ":" + info, "kind": log_as})
+    return ""
+def ap_kiss_loop():
+    """Frames from Dire Wolf (everything it hears) -> ap_handle; also resends messages that were not acknowledged."""
+    rd = aprs.KissReader(); last = 0.0
+    while True:
+        if not ap_running(): time.sleep(0.5); continue
+        if ap["fd"] is None:
+            if ap["pty"] and os.path.exists(ap["pty"]):
+                try:
+                    import termios, tty
+                    fd = os.open(ap["pty"], os.O_RDWR | os.O_NOCTTY); tty.setraw(fd); ap["fd"] = fd; log(f"APRS: talking to Dire Wolf on {ap['pty']}")
+                except OSError as e: ap["err"] = f"Dire Wolf's KISS port: {e}"; time.sleep(2); continue
+            else: time.sleep(0.3); continue
+        import select
+        r, _, _ = select.select([ap["fd"]], [], [], 1.0)
+        if r:
+            try: data = os.read(ap["fd"], 4096)
+            except OSError: data = b""
+            if not data:
+                try: os.close(ap["fd"])
+                except OSError: pass
+                ap["fd"] = None; continue
+            for f in rd.feed(data):
+                p = aprs.ax25_decode(f)
+                if p: ap_handle(p, "rf")
+        if time.time() - last > 1: last = time.time(); ap_retry()
+RETRY = (30, 60, 120, 240)                         # seconds before each resend of an unacknowledged message
+def ap_retry():
+    now = time.time(); changed = False
+    with ap_lock: out = [m for m in ap["msgs"] if m["dir"] == "out" and m["state"] == "sent" and m.get("msgno")]
+    for m in out:
+        if now - m["at"] < RETRY[min(m["tries"] - 1, len(RETRY) - 1)]: continue
+        if m["tries"] > len(RETRY): m["state"] = "failed"; changed = True; continue
+        if not ap_send(aprs.message_info(m["to"], m["text"], m["msgno"]), "message"): m["tries"] += 1; m["at"] = now; changed = True
+    if changed: ap_save_msgs()
+def ap_net_check():
+    try: socket.create_connection(("rotate.aprs2.net", 14580), timeout=4).close(); ok = True
+    except OSError: ok = False
+    if ok != ap["net"]: log(f"APRS: internet {'available' if ok else 'not available'}: internet features {'on' if ok else 'off'}")
+    ap["net"] = ok; ap["net_at"] = time.time()
+def ap_is_loop():
+    """Stations from APRS-IS (the internet) for the list and map, read only, when allowed and there is internet. Never sends."""
+    while True:
+        if not (ap_running() and apset["show_is"] and apset["call"] and apset["lat"] is not None):
+            ap["is_on"] = False; time.sleep(2); continue
+        if time.time() - ap["net_at"] > 300: ap_net_check()
+        if not ap["net"]: ap["is_on"] = False; time.sleep(10); continue
+        try:
+            s = socket.create_connection(("rotate.aprs2.net", 14580), timeout=10); s.settimeout(90)
+            s.sendall(f"user {apset['call']} pass -1 vers yaesu-netradio {RELEASE} filter r/{apset['lat']}/{apset['lon']}/{apset['is_km']}\r\n".encode())
+            ap["is_on"] = True; buf = b""; want = (apset["lat"], apset["lon"], apset["is_km"], apset["call"])
+            while ap_running() and apset["show_is"] and want == (apset["lat"], apset["lon"], apset["is_km"], apset["call"]):
+                d = s.recv(8192)
+                if not d: break
+                buf += d
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1); t = line.decode("latin-1").strip()
+                    if t and not t.startswith("#"):
+                        p = aprs.parse_tnc2(t)
+                        if p: ap_handle(p, "is")
+            s.close()
+        except OSError: ap["net_at"] = 0
+        ap["is_on"] = False; time.sleep(5)
+def ap_start(ip, stop_voice=False):
+    if ap_running(): return 0, ""
+    if wl_running(): return 1, "stop Winlink first: both need the audio link"
+    why = ap_missing()
+    if why: return 1, why
+    if not apset["call"]: return 1, "enter your call sign (with an SSID, e.g. W5PL-10) first"
+    if st["keyed"]: return 1, "transmitting"
+    if cfg["aprs"]["igate"] != "off" and not acc.aprs_pass(): return 1, "the iGate is on but no APRS-IS passcode is set (administration page)"
+    with lock: aud = st["audio"]; voice = bool(aud is not None and (st.get("client") or {}).get("voice") is not False)
+    if aud is not None:
+        if not stop_voice: return 1, "the voice client is connected: APRS needs the audio link (stop the voice client first)"
+        if voice: audio_send(b"C", json.dumps({"act": "quit"}).encode())
+        else: drop_audio(aud, "APRS started")
+        for _ in range(30):
+            if st["audio"] is None: break
+            time.sleep(0.1)
+        if st["audio"] is not None: drop_audio(st["audio"], "APRS started")
+    if st["lsb"]: lsb_leave(False, "APRS started")
+    if st["cw"]: cw_leave(False, "APRS started")
+    for c in (f"F {apset['freq']}", "M FM 0"):
+        r = rig.cmd(c)[0]
+        if r != 0: return r, f"the radio refused \"{c}\" (RPRT {r})"
+    os.makedirs(APRS_RUN, exist_ok=True); conf = os.path.join(APRS_RUN, "direwolf.conf")
+    with os.fdopen(os.open(conf + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: f.write(ap_conf())
+    os.replace(conf + ".tmp", conf)
+    here = os.path.dirname(os.path.abspath(__file__))
+    cmds = {"audio": [sys.executable, "-u", os.path.join(here, "ft897-winlink-audio.py"), "--port", str(a.audio_port), "--name", "APRS on the Pi (Dire Wolf)"],
+            "direwolf": ["direwolf", "-c", conf, "-p", "-t", "0", "-q", "d"]}
+    ap_net_check()
+    with ap_lock:
+        ap.update(err="", stopping=False, by=ip, since=time.time(), pty=None, fd=None); ap["log"].clear()
+        for name in ("audio", "direwolf"):
+            try: pr = subprocess.Popen(cmds[name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, cwd=APRS_RUN)
+            except OSError as e: ap["err"] = f"{name} could not start: {e}"; break
+            ap["procs"][name] = pr; threading.Thread(target=ap_reader, args=(name, pr), daemon=True).start()
+    if ap["err"]: ap_stop(ap["err"]); return 1, ap["err"]
+    A = cfg["aprs"]
+    log(f"APRS on the Pi started by {label_of(ip)} ({apset['call']}, {apset['freq'] / 1e6:.3f} MHz, digipeater {A['digi']}, iGate {A['igate']}, internet {'yes' if ap['net'] else 'no'})")
+    return 0, ""
+def ap_stop(why=""):
+    with ap_lock:
+        if not ap["procs"]: return
+        ap["stopping"] = True; procs = dict(ap["procs"])
+    for name in ("direwolf", "audio"):
+        pr = procs.get(name)
+        if pr and pr.poll() is None:
+            try: pr.terminate()
+            except OSError: pass
+    for pr in procs.values():
+        try: pr.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            try: pr.kill()
+            except OSError: pass
+    if ap["fd"] is not None:
+        try: os.close(ap["fd"])
+        except OSError: pass
+    with ap_lock: ap["procs"].clear(); ap["by"] = None; ap["fd"] = None; ap["pty"] = None
+    log("APRS on the Pi stopped" + (f" ({why})" if why else ""))
+# ---------------------------------------------------------------- offline maps (ft897_maps.py): areas around a position, as MBTiles
+MAPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maps") if a.dummy else os.path.expanduser("~/.local/share/yaesu-netradio/maps")
+mapstore = maps.Store(MAPS_DIR, f"yaesu-netradio/{RELEASE} (offline maps for APRS; https://github.com/jwheeler188/yaesu-netradio)",
+                      os.environ.get("FT897_TILE_URL", "") if a.dummy else "")
+def maps_info():
+    return {"sources": {k: {"name": v["name"], "max": v["max"], "credit": v["credit"]} for k, v in maps.SOURCES.items()}, "areas": mapstore.areas(),
+            "job": mapstore.status(), "limit_mb": cfg["maps_max_mb"], "free_mb": int(maps.shutil_free(MAPS_DIR) / 1e6)}
+def maps_op(ip, j):
+    op = j.get("op")
+    if op == "cancel": mapstore.cancel = True; return 0, ""
+    if op == "delete":
+        e = mapstore.delete(str(j.get("id") or "")); return (1, e) if e else (0, "")
+    if op in ("estimate", "download"):
+        try:
+            lat, lon = float(j["lat"]), float(j["lon"]); r = round(float(j["radius_km"]), 1); z = int(j["maxz"]); d = round(float(j.get("detail_km") or 0), 1); src = str(j["source"])
+        except (KeyError, TypeError, ValueError): return 1, "give a position, radius and zoom"
+        if src not in maps.SOURCES: return 1, "unknown map source"
+        if not (-85 <= lat <= 85 and -180 <= lon <= 180): return 1, "position out of range"
+        if not (1 <= r <= 800 and 0 <= d <= 200 and 8 <= z <= maps.SOURCES[src]["max"]): return 1, "bad radius, detail or zoom"
+        if op == "estimate":
+            e = maps.estimate(src, lat, lon, r, z, d); e.update(limit_mb=cfg["maps_max_mb"], free_mb=int(maps.shutil_free(MAPS_DIR) / 1e6)); return 0, e
+        name = re.sub(r"[^\w ,.-]", "", str(j.get("name") or ""))[:40].strip() or f"{r} km around {lat:.2f},{lon:.2f}"
+        e, aid = mapstore.start(name, src, lat, lon, r, z, d, cfg["maps_max_mb"])
+        if e: return 1, e
+        log(f"offline maps: downloading \"{name}\" ({src}, {r} km, zoom {z}) for {label_of(ip)}"); return 0, {"id": aid}
+    return 1, "unknown maps command"
+
+def ap_summary():
+    by = ap["by"]; by = label_of(by) if by else None              # (not under ap_lock: label_of takes the main lock)
+    with ap_lock:
+        on = bool(ap["procs"])
+        return {"on": on, "alive": {k: v.poll() is None for k, v in ap["procs"].items()}, "err": ap["err"], "call": apset["call"],
+                "net": ap["net"], "is_on": ap["is_on"], "heard": len(ap["stations"]), "unread": ap["unread"], "missing": ap_missing(),
+                "by": by, "ready": bool(apset["call"]) and not ap_missing()}
+def ap_full():
+    """Everything the APRS tab shows (GET /api/aprs, polled only while the tab is open)."""
+    now = time.time(); me = (apset["lat"], apset["lon"])
+    with ap_lock:
+        S = []
+        for s in sorted(ap["stations"].values(), key=lambda s: -s["last"])[:300]:
+            x = dict(s); x["age"] = int(now - s["last"])
+            if len(s.get("track") or []) < 2: x.pop("track", None)
+            else: x["track"] = [t[:2] for t in s["track"]]
+            x["rf"] = now - s["rf_last"] < 1800       # heard on the radio in the last 30 min
+            if me[0] is not None and "lat" in s: x["km"], x["brg"] = aprs.dist_bearing(me[0], me[1], s["lat"], s["lon"])
+            S.append(x)
+        j = {"settings": dict(apset), "stations": S, "packets": list(ap["pk"])[-150:], "msgs": ap["msgs"][-300:], "bulletins": sorted(ap["bln"].values(), key=lambda b: -b["t"])[:50],
+             "log": list(ap["log"])[-15:], "digi": cfg["aprs"]["digi"], "igate": cfg["aprs"]["igate"], "now": now,
+             "echo": dict(ap["echo"], age=int(now - ap["echo"]["t"])) if ap["echo"] else None}
+    j.update(ap_summary()); return j
+def ap_op(ip, j):
+    op = j.get("op")
+    if op == "set":
+        old = dict(apset); err = ap_clean(j)
+        if err: apset.update(old); return 1, err
+        if apset != old:
+            ap_save()
+            if ap_running() and any(apset[k] != old[k] for k in ("call", "sym", "comment", "beacon", "lat", "lon", "path", "freq")):
+                return 0, "saved: stop and start APRS to use them"
+        return 0, ""
+    if op == "start": return ap_start(ip, j.get("stop_voice") is True)
+    if op == "stop": threading.Thread(target=ap_stop, args=(f"by {label_of(ip)}",), daemon=True).start(); return 0, ""
+    if op == "read":
+        with ap_lock:
+            for m in ap["msgs"]:
+                if m["dir"] == "in" and m["state"] == "new": m["state"] = "read"
+            ap["unread"] = 0
+        ap_save_msgs(); return 0, ""
+    if op == "inject" and a.dummy:                 # test mode only: packets as if heard (no Dire Wolf, no sound card)
+        for line in (j.get("lines") or [])[:50]:
+            p = aprs.parse_tnc2(str(line))
+            if p: ap_handle(p, "is" if j.get("src") == "is" else "rf")
+        return 0, ""
+    if op == "clear":                              # the station list and packet log (messages stay)
+        with ap_lock: ap["stations"].clear(); ap["pk"].clear(); ap["bln"].clear()
+        return 0, ""
+    if not ap_running(): return 1, "start APRS first"
+    if op == "beacon":
+        if apset["lat"] is None: return 1, "set your position first"
+        e = ap_send(aprs.position_info(apset["lat"], apset["lon"], apset["sym"][0], apset["sym"][1], apset["comment"]), "position")
+        return (1, e) if e else (0, "")
+    if op == "send":
+        to = str(j.get("to") or "").strip().upper(); text = str(j.get("text") or "").strip()
+        if not re.fullmatch(r"[A-Z0-9]{1,6}(-[0-9]{1,2})?", to): return 1, "check the call sign to send to"
+        if not text: return 1, "nothing to send"
+        with ap_lock: no = str(ap["seq"]); ap["seq"] = ap["seq"] % 99999 + 1
+        m = {"id": os.urandom(4).hex(), "t": time.time(), "dir": "out", "from": apset["call"], "to": to, "text": text[:67], "msgno": no, "state": "sent", "tries": 1, "at": time.time()}
+        e = ap_send(aprs.message_info(to, text, no), "message")
+        if e: return 1, e
+        with ap_lock: ap["msgs"].append(m)
+        ap_save_msgs(); return 0, ""
+    return 1, "unknown APRS command"
 
 # ---------------------------------------------------------------- rig poller (for the web panel)
 def fake_dead():
@@ -1343,10 +1727,11 @@ def take_control(ip, label):
     with lock:
         st["owner"] = ip; st["owner_name"] = label; st["owner_seen"] = time.time()
         kb = st["keyed_by"] or ""; keyed = st["keyed"]
-        aud = st["audio"] if st["audio_ip"] != ip and not (st["audio_ip"] == "127.0.0.1" and wl["by"] == ip) else None
+        aud = st["audio"] if st["audio_ip"] != ip and not (st["audio_ip"] == "127.0.0.1" and ip in (wl["by"], ap["by"])) else None
         cats = [v for v in st["cat_clients"].values() if v["ip"] not in (ip, "127.0.0.1")]
     log(f"TAKE CONTROL by {label}: closing {len(cats)} CAT connection(s)" + (" and the audio link" if aud else ""))
     if wl_running() and wl["by"] != ip: wl_stop(f"radio taken over by {label}")
+    if ap_running() and ap["by"] != ip: ap_stop(f"radio taken over by {label}")
     if cwq["ip"] and cwq["ip"] != ip:                  # the CW keyer's queue belonged to someone else
         with cw_lock: cwq["text"].clear(); cwq["played"].clear()
         cwtl.clear(time.time())
@@ -1371,7 +1756,7 @@ def in_use_by(ip):
     transmitting, has the audio link, or has an app on the CAT port."""
     with lock:
         if st["owner"]: return st["owner"] if st["owner"] != ip else None
-        here = lambda k: wl["by"] or k if k == "127.0.0.1" else k          # Winlink on the Pi: whoever started it
+        here = lambda k: wl["by"] or ap["by"] or k if k == "127.0.0.1" else k          # Winlink / APRS on the Pi: whoever started it
         kb = st["keyed_by"] or ""
         if st["keyed"]:
             k = here(kb[4:] if kb.startswith("web:") else kb[3:] if kb.startswith("cw:") else kb.rsplit(":", 1)[0])
@@ -1681,7 +2066,7 @@ def state_for(ip, role=""):
         cats = [{"ip": v["ip"], "name": host_name(v["ip"]), "since": int(now - v["since"])}
                 for v in st["cat_clients"].values() if v["ip"] != "127.0.0.1"]
         panels = [{"ip": k, "name": v["name"]} for k, v in st["panels"].items() if now - v["seen"] < 5]
-        return {"bridge": VERSION, "release": RELEASE, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB" if st["lsb"] else "DCW", "dial": st["rig"].get("freq")} if st["lsb"] or st["cw"] else dict(st["rig"]), "lsb": st["lsb"], "cw": cw_state(), "winlink": wl_state(), "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
+        return {"bridge": VERSION, "release": RELEASE, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB" if st["lsb"] else "DCW", "dial": st["rig"].get("freq")} if st["lsb"] or st["cw"] else dict(st["rig"]), "lsb": st["lsb"], "cw": cw_state(), "winlink": wl_state(), "aprs": ap_summary(), "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
                 "rig_age": round(now - st["rig"].get("ts", 0), 1), "rit": st["rit"], "smeter_live": st.get("smeter_live", False),
                 "rep_v": rep["v"], "dcs_codes": DCS, "listening": st["audio"] is not None,
                 "client": st.get("client") if st["audio"] is not None and now - st.get("client_ts", 0) < 5 else None,
@@ -1738,15 +2123,31 @@ class Web(BaseHTTPRequestHandler):
             r = acc.role(self.token(), ip_of(self.client_address))
             j = {"role": r, "admin_set": acc.has("admin"), "oper_set": acc.has("oper"), "radio": {"key": RADIO.key, "name": RADIO.name, "max": RADIO.max_hz, "modes": MODES, "labels": acc.MODE_NAME}}
             if r == "admin":
-                with acc.lock: j.update(cfg=json.loads(json.dumps(cfg)), trips=dict(acc.trips), problem=acc.problem, version=VERSION)
+                with acc.lock: j.update(cfg=json.loads(json.dumps(cfg)), trips=dict(acc.trips), problem=acc.problem, version=VERSION, aprs_pass_set=bool(acc.aprs_pass()))
                 with lock: j["rig"] = dict(st["rig"])
             return self.reply(200, j)
+        if self.path == "/aprs":
+            try:
+                with open(os.path.join(os.path.dirname(PANEL), "aprs.html"), "rb") as f: return self.reply(200, f.read(), "text/html; charset=utf-8")
+            except OSError: return self.reply(404, b"aprs.html missing", "text/plain")
+        if self.path.startswith("/static/"):                  # the map library and APRS icons, kept on the Pi (works with no internet)
+            base = os.path.realpath(os.path.join(os.path.dirname(PANEL), "static"))
+            fp = os.path.realpath(os.path.join(base, self.path.split("?")[0][len("/static/"):]))
+            ct = {".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".md": "text/plain; charset=utf-8"}.get(os.path.splitext(fp)[1])
+            if not fp.startswith(base + os.sep) or not ct or not os.path.isfile(fp): return self.reply(404, {"error": "not found"})
+            with open(fp, "rb") as f: return self.reply(200, f.read(), ct)
         if self.path in ("/", "/index.html"):
             try:
                 with open(PANEL, "rb") as f: return self.reply(200, f.read(), "text/html; charset=utf-8")
             except OSError: return self.reply(404, b"panel.html missing", "text/plain")
         if self.path == "/api/state":
             ip, _ = self.ident(); return self.reply(200, state_for(ip, acc.role(self.token(), ip)))
+        if self.path == "/api/aprs": return self.reply(200, ap_full())
+        if self.path == "/api/maps": return self.reply(200, maps_info())
+        m = re.fullmatch(r"/tiles/([a-z0-9-]{1,20})/(\d{1,2})/(\d{1,7})/(\d{1,7})(\.\w{3,4})?", self.path.split("?")[0])
+        if m:                                              # offline map tiles, from the downloaded areas
+            d = mapstore.tile(m[1], int(m[2]), int(m[3]), int(m[4]))
+            return self.reply(200, d, "image/jpeg") if d else self.reply(404, b"", "image/jpeg")
         if self.path == "/api/repeaters":
             with rep_lock: return self.reply(200, {"list": rep["list"], "v": rep["v"]})
         if self.path.split("?")[0] == "/api/audio": return self.audio_stream()
@@ -1813,6 +2214,13 @@ class Web(BaseHTTPRequestHandler):
                 return self.reply(403, {"error": why_not()})
             if self.path == "/api/ptt":
                 c, err = web_ptt(ip, j.get("on") is True, j.get("start") is True)
+            elif self.path == "/api/maps":
+                c, res = maps_op(ip, j)
+                if c == 0: return self.reply(200, {"ok": True, **(res if isinstance(res, dict) else {})})
+                err = res
+            elif self.path == "/api/aprs":
+                c, err = ap_op(ip, j)
+                if c == 0 and err: return self.reply(200, {"ok": True, "note": err})
             elif self.path == "/api/winlink":
                 c, err = wl_op(ip, j)
             elif self.path == "/api/cw":
@@ -1839,7 +2247,10 @@ class Web(BaseHTTPRequestHandler):
             log(f"administrator password set by {label_of(ip)}")
         elif not admin: return self.reply(403, {"error": "sign in as administrator"})
         elif op == "save":
-            try: acc.update(j.get("cfg") or {})
+            try:
+                acc.update(j.get("cfg") or {})
+                if "aprs_pass" in j: acc.set_aprs_pass(j["aprs_pass"]); log(f"APRS-IS passcode {'set' if j['aprs_pass'] else 'removed'} by {label_of(ip)}")
+            except ValueError as e: return self.reply(400, {"error": str(e)})
             except OSError as e: return self.reply(500, {"error": f"could not save: {e}"})
             if cfg["mic"] is not None or cfg["spk"] is not None:
                 d = find_card(); cid = card_index(d) if d and d != "null" else None
@@ -1868,8 +2279,9 @@ def web_server():
     srv.serve_forever()
 
 def on_stop(signum, frame):
-    try: wl_stop("the bridge stops")
-    except Exception: pass
+    for f in (wl_stop, ap_stop):
+        try: f("the bridge stops")
+        except Exception: pass
     if st["keyed"]:
         try: rig_cmd("T 0", timeout=1)
         except OSError: pass
@@ -1880,7 +2292,7 @@ def on_stop(signum, frame):
     log("bridge stopped"); os._exit(0)
 
 if __name__ == "__main__":
-    acc.load(); rpt_load(); cw_load(); wl_load(); cw_dec.set_f(cwset["pitch"])
+    acc.load(); rpt_load(); cw_load(); wl_load(); ap_load(); cw_dec.set_f(cwset["pitch"])
     if acc.problem: log(acc.problem + ": no transmitting until the administration page is saved")
     signal.signal(signal.SIGTERM, on_stop); signal.signal(signal.SIGINT, on_stop)
     log(f"W5PL FT-897D network bridge {VERSION} (yaesu-netradio {RELEASE})" + (f", radio {RADIO.name}" if RADIO.key != "ft897d" else "") + (" (DUMMY test mode)" if a.dummy else ""))
@@ -1889,6 +2301,6 @@ if __name__ == "__main__":
             try: fn()
             except Exception as e:
                 import traceback; log(f"{fn.__name__} failed: {e!r}\n{traceback.format_exc()}"); time.sleep(2)
-    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server, cw_loop, cw_rx_loop):
+    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server, cw_loop, cw_rx_loop, ap_kiss_loop, ap_is_loop):
         threading.Thread(target=supervised, args=(fn,), daemon=True).start()
     while True: time.sleep(3600)

@@ -20,7 +20,8 @@ DEFAULT = {"tx": True, "inside": True, "bands": [{"name": n, "lo": lo, "hi": hi,
            "blocks": [], "swr": {"on": True, "flag": True, "level": 4, "reads": 3, "reset": "anyone"},
            "tx_timeout": 300, "need_control": False, "answer_s": 30, "no_answer": "grant", "owner_timeout": 120,
            "max_drive": -1, "mic": None, "spk": None, "locks": {k: False for k in LOCKS}, "hosts": [],
-           "modes": {}, "hide_locked": False}            # modes: mode -> reason, for the modes locked for transmitting
+           "modes": {}, "hide_locked": False,             # modes: mode -> reason, for the modes locked for transmitting
+           "aprs": {"digi": "fillin", "aliases": "", "igate": "off", "server": "noam.aprs2.net"}, "maps_max_mb": 2000}
 
 def num(v, lo, hi, d):
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v: return d
@@ -38,6 +39,7 @@ def clean(j, old=None):
     c["answer_s"] = num(j.get("answer_s"), 10, 300, c["answer_s"])
     c["owner_timeout"] = num(j.get("owner_timeout"), 30, 3600, c["owner_timeout"])
     c["max_drive"] = num(j.get("max_drive"), -20, -1, c["max_drive"])
+    c["maps_max_mb"] = num(j.get("maps_max_mb"), 50, 100_000, c["maps_max_mb"])
     for k, hi in (("mic", 35), ("spk", 37)):                 # None = leave the sound card as it is
         if k in j: c[k] = None if j[k] is None else num(j[k], 0, hi, c[k])
     if j.get("no_answer") in ("grant", "refuse"): c["no_answer"] = j["no_answer"]
@@ -63,11 +65,29 @@ def clean(j, old=None):
         c["blocks"] = [{"lo": rng(x)[0], "hi": rng(x)[1], "note": text(x.get("note"), 80)} for x in j["blocks"] if isinstance(x, dict) and rng(x)]
     if isinstance(j.get("modes"), dict) and len(j["modes"]) <= 20:
         c["modes"] = {k: text(v, 80) for k, v in j["modes"].items() if isinstance(k, str) and k.isalnum() and len(k) <= 8}
+    A = j.get("aprs")
+    if isinstance(A, dict):
+        if A.get("digi") in ("off", "fillin", "wide"): c["aprs"]["digi"] = A["digi"]
+        if A.get("igate") in ("off", "rx", "rxtx"): c["aprs"]["igate"] = A["igate"]
+        if "aliases" in A: c["aprs"]["aliases"] = ",".join(x for x in str(A["aliases"] or "").upper().replace(" ", ",").split(",") if x and len(x) <= 9)[:60]
+        sv = text(A.get("server"), 80)
+        if sv and all(ch.isalnum() or ch in ".-" for ch in sv): c["aprs"]["server"] = sv
     if isinstance(j.get("hosts"), list): c["hosts"] = [text(h, 100).lower() for h in j["hosts"] if text(h, 100)][:20]
     return c
 
 cfg = json.loads(json.dumps(DEFAULT)); trips = {}          # trips: band -> {"why", "hz", "at"}; kept over a restart
 problem = ""                                               # settings.json exists but can't be read: fail safe, no transmitting
+
+APRS_SECRET = os.path.join(HERE, "aprs-secret.json")            # the APRS-IS passcode: only Dire Wolf's configuration uses it
+def aprs_pass():
+    try:
+        with open(APRS_SECRET) as f: v = json.load(f).get("pass", "")
+        return v if isinstance(v, str) and v.isdigit() else ""
+    except (OSError, ValueError, AttributeError): return ""
+def set_aprs_pass(v):
+    v = str(v or "").strip()
+    if v and not (v.isdigit() and len(v) <= 6): raise ValueError("the passcode is a number (up to 5 digits)")
+    write(APRS_SECRET, {"pass": v})
 
 def write(path, obj):
     tmp = path + ".tmp"

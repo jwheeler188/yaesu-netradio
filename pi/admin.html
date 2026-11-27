@@ -93,6 +93,20 @@ form.pw label { display: grid; grid-template-columns: 210px 1fr; gap: 8px; align
     <div class="f"><span>Transmit (Speaker)<small>0 to 37</small></span><input class="n" type="number" min="0" max="37" data-k="spk" data-null></div>
   </div>
 
+  <div class="card"><h2>APRS digipeater and iGate</h2><p class="help">Used while APRS runs on the Pi (the panel's APRS tab). Changes apply the next time APRS starts.</p>
+    <div class="f"><span>Digipeater<small><b>Fill-in</b> repeats WIDE1-1 only: the polite choice for a home station where full digipeaters already cover the area.
+      <b>Wide area</b> also repeats WIDEn-N like a hilltop digipeater: for emergencies or where there is no coverage, since it adds traffic for everyone.</small></span>
+      <select data-k="aprs.digi"><option value="off">Off</option><option value="fillin">Fill-in (WIDE1-1)</option><option value="wide">Wide area (WIDEn-N)</option></select></div>
+    <div class="f"><span>Extra aliases to repeat<small>Optional, for example an emergency or county alias agreed with your group: EMCOMM, TXHRS. Separate several with commas.</small></span><input data-k="aprs.aliases" maxlength="60" placeholder="none"></div>
+    <div class="f"><span>iGate<small><b>Receive only</b> sends what the radio hears to the internet (APRS-IS): always useful. <b>Two-way</b> also sends internet messages
+      on the air, only to stations heard here recently, at most 6 a minute. Needs internet; without it the iGate just waits.</small></span>
+      <select data-k="aprs.igate"><option value="off">Off</option><option value="rx">Receive only</option><option value="rxtx">Two-way</option></select></div>
+    <div class="f"><span>Largest offline-map download, MB<small>50 to 100000. The APRS page shows the size before downloading and also checks the free space on the Pi.</small></span><input class="n" type="number" min="50" max="100000" data-k="maps_max_mb"></div>
+    <div class="f"><span>APRS-IS server</span><input data-k="aprs.server" maxlength="80"></div>
+    <div class="f"><span>APRS-IS passcode<small id="apnote">Needed for the iGate. Kept on the Pi in its own file and never shown again.</small></span>
+      <span><input id="aprspass" type="password" inputmode="numeric" autocomplete="off" maxlength="6" style="width:110px"> <label style="font-size:13px"><input type="checkbox" id="aprsclr"> remove it</label></span></div>
+  </div>
+
   <div class="card"><h2>Passwords</h2><p class="help">The operator password is asked for when someone takes control. Without one, anyone on the network can. Changing a password signs everyone out.</p>
     <form class="pw" id="foper"><label><b id="operh"></b></label><label>New operator password <input type="password" id="o1" autocomplete="new-password"></label><label>Again <input type="password" id="o2" autocomplete="new-password"></label><label>Your administrator password <input type="password" id="oc" autocomplete="current-password" required></label><div class="row"><button class="primary">Set operator password</button><button type="button" id="odel">Remove it</button></div></form><div class="msg" id="moper"></div>
     <form class="pw" id="fadm" style="margin-top:14px"><label><b>Administrator</b></label><label>New administrator password <input type="password" id="a1" autocomplete="new-password" minlength="8" required></label><label>Again <input type="password" id="a2" autocomplete="new-password" required></label><label>Current one <input type="password" id="ac" autocomplete="current-password" required></label><button>Change</button></form><div class="msg" id="madm"></div>
@@ -122,6 +136,7 @@ const mhz = hz => String(+(hz / 1e6).toFixed(6)), hz = v => Math.round(parseFloa
 function paint() {
   document.querySelectorAll("[data-k]").forEach(e => { const v = get(e.dataset.k); if (e.type === "checkbox") e.checked = v; else e.value = v === null ? "" : v; });
   $("hosts").value = C.hosts.join(" ");
+  $("aprspass").placeholder = D.aprs_pass_set ? "set" : "not set"; $("aprspass").value = ""; $("aprsclr").checked = false; $("aprsclr").parentNode.style.display = D.aprs_pass_set ? "" : "none";
   $("bands").innerHTML = C.bands.map((b, i) => `<tr class="${b.tx ? "" : "off"}" data-i="${i}"><td><b>${esc(b.name)}</b></td><td><label><input type="checkbox" data-b="tx" ${b.tx ? "checked" : ""} aria-label="Transmit on ${esc(b.name)}"><span>${b.tx ? "Allowed" : "Locked"}</span></label></td>` +
     `<td><input class="mhz" data-b="lo" value="${mhz(b.lo)}" inputmode="decimal" aria-label="${esc(b.name)} from"></td><td><input class="mhz" data-b="hi" value="${mhz(b.hi)}" inputmode="decimal" aria-label="${esc(b.name)} to"></td><td class="note"><input data-b="note" maxlength="80" value="${esc(b.note)}" aria-label="${esc(b.name)} reason"></td></tr>`).join("");
   const ML = D.radio.labels || {}, ms = D.radio.modes || [];
@@ -134,8 +149,10 @@ function paint() {
   $("operh").textContent = "Operator: " + (D.oper_set ? "password set" : "no password, anyone may take control"); $("odel").hidden = !D.oper_set;
   dirty();
 }
-function dirty(m, bad) { const d = JSON.stringify(C) !== saved; $("bar").style.display = d || m ? "block" : "none"; $("save").disabled = $("undo").disabled = !d; $("mbar").textContent = m || "Not saved yet."; $("mbar").className = "msg" + (m ? bad ? " bad" : " good" : ""); }
+let passChanged = false;
+function dirty(m, bad) { const d = JSON.stringify(C) !== saved || passChanged; $("bar").style.display = d || m ? "block" : "none"; $("save").disabled = $("undo").disabled = !d; $("mbar").textContent = m || "Not saved yet."; $("mbar").className = "msg" + (m ? bad ? " bad" : " good" : ""); }
 document.querySelectorAll("[data-k]").forEach(e => e.addEventListener("input", () => { put(e.dataset.k, e.type === "checkbox" ? e.checked : e.type === "number" ? (e.value === "" ? "null" in e.dataset ? null : get(e.dataset.k) : +e.value) : e.value); dirty(); }));
+$("aprspass").oninput = $("aprsclr").onchange = () => { passChanged = !!$("aprspass").value || $("aprsclr").checked; dirty(); };
 $("hosts").oninput = () => { C.hosts = $("hosts").value.toLowerCase().split(/[\s,]+/).filter(Boolean); dirty(); };
 for (const id of ["bands", "blocks"]) $(id).addEventListener("input", e => {
   const tr = e.target.closest("tr"), k = e.target.dataset.b; if (!k) return; const b = C[id][+tr.dataset.i];
@@ -154,8 +171,10 @@ $("undo").onclick = () => { C = JSON.parse(saved); paint(); };
 $("save").onclick = async () => {
   for (const x of [...C.bands, ...C.blocks]) if (!(x.lo > 0 && x.hi > x.lo && x.hi <= 470e6)) return dirty(`Check the edges of ${x.name || "the locked range"}: "From" must be below "To" (MHz).`, true);
   if (C.need_control && !D.oper_set && !confirm("No operator password is set, so anyone can still take control. Save anyway?")) return;
-  const r = await post("/api/admin", { op: "save", cfg: C });
+  const body = { op: "save", cfg: C }; if ($("aprsclr").checked) body.aprs_pass = ""; else if ($("aprspass").value) body.aprs_pass = $("aprspass").value.trim();
+  const r = await post("/api/admin", body);
   if (!r.ok) { dirty(r.error, true); if (r.status === 403) setTimeout(load, 1500); return; }
+  if ("aprs_pass" in body) D.aprs_pass_set = !!body.aprs_pass; passChanged = false;
   C = r.cfg; saved = JSON.stringify(C); D.problem = ""; paint(); dirty("Saved. It applies now."); setTimeout(() => { if (JSON.stringify(C) === saved) dirty(); }, 3000);
 };
 $("trips").onclick = async e => { const b = e.target.dataset.swr; if (b && confirm("Reset the high-SWR lock? Only after checking the antenna.")) { const r = await post("/api/swr_reset", { band: b }); if (!r.ok) alert(r.error); else { delete D.trips[b]; paint(); } } };

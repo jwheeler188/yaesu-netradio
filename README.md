@@ -151,6 +151,15 @@ browser, connect to a gateway, Pat tunes the radio. xara reaches the radio throu
 and CAT ports, so every lock and safety check applies. xara's source comes with this project (`third_party/xara`);
 `./install.sh` offers to build it, or run `pi/winlink-install.sh`. Manual section 3.6.
 
+**APRS on the Pi** (APRS tab, beta): Dire Wolf is the modem, fill-in digipeater (out of the box) and optional iGate, keying the
+radio through the bridge so every lock applies; the panel has the station list with distance and bearing, messaging with acks and
+retries, bulletins, beacons and the packet log. Stations from the internet (APRS-IS) can be shown too, always outlined in blue; the
+internet features switch off by themselves when there is no internet. Digipeater and iGate settings are on the administration page.
+APRS has its own page (`/aprs`) with a map: APRS symbols, tracks, click-a-station details and messaging, and
+click-to-set your position, miles or kilometres. **Offline maps:** pick a radius, detail level and street-detail distance, see the size,
+and the Pi downloads USGS topo or imagery (public domain, US only) as MBTiles; the map uses them when there's no internet. Map library [Leaflet](https://leafletjs.com) (BSD-2, `pi/static/leaflet`); symbols
+[aprs-symbols](https://github.com/hessu/aprs-symbols) by OH7LZB (`pi/static/aprs-symbols`, see its COPYRIGHT.md). Manual section 5.12.
+
 **Repeaters and favorites:** one click sets frequency, mode, shift, offset and CTCSS or DCS. The list is kept on the Pi
 (`pi/repeaters.json`), so every panel shows the same one. Import the CSV you export from your own RepeaterBook account
 (personal use; digital-only, off-air and out-of-band entries are skipped) or a CHIRP CSV, or use Add current. Data courtesy

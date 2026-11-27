@@ -136,7 +136,7 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
 Winlink email can run on the Pi itself, so no laptop software is needed: xara (a VARA HF-compatible modem, MIT
 licence, included in `third_party/xara`) and [Pat](https://getpat.io) (the mail program).
 
-- **The easy way:** `./install.sh` asks "Also set up Winlink email on this Pi?". Or run `pi/winlink-install.sh` any time.
+- **The easy way:** `./install.sh` asks "Also set up Winlink email on this Pi?" (it installs Dire Wolf for APRS too). Or run `pi/winlink-install.sh` any time.
   It installs the build tools and Pat, adds the loopback sound card that joins xara and the bridge (card 10, so the
   other sound cards keep their numbers), offers to install Rust with rustup if Rust 1.85 or newer isn't there (about
   250 MB in your home folder, no sudo, checked against its published checksum), builds xara with no internet (about
@@ -337,6 +337,56 @@ xara keys the radio through the bridge's CAT port, so every lock, the transmit t
 apply. If another computer takes control, Winlink stops. The tab shows the last lines of xara's and Pat's logs. Pat's
 page has no password of its own: anyone who can open the panel can open it while Winlink runs.
 
+### 5.12 APRS
+
+APRS runs on the Pi with [Dire Wolf](https://github.com/wb2osz/direwolf) as the modem, digipeater and iGate (installed by
+`pi/winlink-install.sh`, or `sudo apt install direwolf`). Like Winlink, it takes over the radio while it runs: the radio goes
+to the APRS frequency in FM, the voice client can't connect, and every transmit lock and safety check applies, because Dire Wolf
+keys the radio through the bridge.
+
+APRS has **its own page**, `http://<Pi address>:8080/aprs`: the panel's **APRS** tab has Start/Stop, a status line and
+**Open the APRS page**. Keep it open on another screen or a tablet; it uses the same sign-in and control rules as the panel.
+
+<p align="center"><img src="../screenshots/14-aprs-page.png" alt="The APRS page" width="760"><br><em>The APRS page: the map with each station's symbol, a moving station's track, internet stations outlined in blue, and the Messages tab. (Test stations.)</em></p>
+
+- **Top bar:** whether APRS is running and on which frequency, internet, digipeater and iGate status, **Start / Stop APRS**,
+  **Beacon now** (your position, once) and **📍 My position** (then click the map where your station is).
+- **Map:** every station with a position, with its APRS symbol and call; your own in green. Moving stations leave a short track
+  (orange; dashed blue if from the internet). Click a station for its comment, distance and bearing, how it was heard, its speed and
+  altitude, and a **Message** button. Online the map is OpenStreetMap; without internet it uses the maps downloaded to the Pi (below).
+- **Weather stations:** their popup shows temperature, humidity, wind (direction, speed, gusts), pressure, rain (last hour, 24
+  hours, since midnight), snow and sunlight, whatever the station sends, in your units; the list shows their temperature.
+- **Stations:** the same stations as a list, newest first, with distance and bearing, how long ago, and the path. Type in
+  "Find a station" to filter; click one to see it on the map. **Clear list** empties the list and packet log.
+- **Messages:** one button per station you've exchanged messages with. Messages to you are acknowledged automatically, every time a
+  copy arrives, and shown once; yours are sent with a number and repeated after 30, 60, 120 and 240 s until acknowledged:
+  "✓ delivered", or "✗ no answer" after 5 tries (about 11 minutes). "✗ refused by their radio" means the other station's radio sent
+  back a reject: usually its message memory is full, or it is set not to accept messages. Bulletins heard show below. The tab (and the panel's APRS tab) shows a red count of unread messages.
+- **Packets:** everything heard, with what came from the internet in blue and what this station sent in amber.
+- **Maps (offline maps):** download maps to the Pi so the map works with no internet. Choose **Around** (your position or
+  the centre of the map now), **Radius**, **Detail up to** (zoom 10 region, 12 towns and main roads, 14 streets, 16 most detail),
+  **Street detail within** (the zooms above 12 only within this distance: much smaller files) and the **Map** (USGS topo or
+  imagery, public domain, US only). It shows the number of tiles and the size before anything is downloaded, and refuses more than
+  the administrator's limit or the free space. Downloading runs on the Pi: the page can be closed, and **Cancel** stops it.
+  **Saved on the Pi** lists each area with **Show**, **Update** (fetches what is missing) and **Delete**. **Map shown** is
+  *automatic* (online with internet, offline without), OpenStreetMap, or an offline map. Areas are MBTiles files in
+  `~/.local/share/yaesu-netradio/maps` on the Pi. Typical sizes: 15 miles to zoom 14 with streets within 5 miles, about 5 MB;
+  60 miles to zoom 14 with streets within 15 miles, about 100 MB.
+
+<p align="center"><img src="../screenshots/16-aprs-offline-maps.png" alt="Offline maps" width="760"><br><em>An offline USGS topo map, drawn from the Pi with no internet, and the Maps tab with the download settings and the saved area. (Test stations.)</em></p>
+
+- **Settings:** your call sign with an SSID (-10 is usual for a home station or iGate), symbol, position (grid square or
+  latitude/longitude, or the 📍 button), comment, beacon interval (or off), path (WIDE2-1 for a fixed station, WIDE1-1,WIDE2-1
+  for mobile or portable), your region's APRS frequency, **internet stations**, and **Units** (miles, mph and feet, or kilometres,
+  km/h and metres; kept per browser).
+- **Internet stations:** stations near you from APRS-IS, read only. Anything that came from the internet and was not heard on
+  the radio is outlined in **blue** on the map, in the list and in messages, so you always know whether you can reach a station by
+  radio. The Pi checks for internet when APRS starts and every few minutes; without it, the internet features switch off by
+  themselves and come back when it returns.
+- The digipeater and iGate are set on the [administration page](#7-administration-page-reference): fill-in digipeating
+  (WIDE1-1) is on out of the box; wide-area digipeating, extra aliases and the iGate are there too.
+- Not yet: worldwide offline maps (Protomaps), a second receiver for APRS in the background, weather and HF APRS.
+
 ## 6. Audio settings reference
 
 All audio settings live in the **voice client** on your laptop. They're remembered in `~/.ft897-audio.json` and
@@ -399,6 +449,8 @@ Record; and set the radio's DSP and noise blanker before you leave. A quieter an
 
 <p align="center"><img src="../screenshots/10-admin-modes.png" alt="Administration: modes" width="600"><br><em>Modes. In this example plain LSB/USB are locked because the FT-897 only takes the Digirig's audio in DIG, CW because no key is connected, and RTTY in favour of DIG with a data program.</em></p>
 
+<p align="center"><img src="../screenshots/15-admin-aprs.png" alt="Administration: APRS" width="600"><br><em>APRS digipeater and iGate: fill-in digipeating out of the box; the passcode is kept apart and never shown again.</em></p>
+
 <p align="center"><img src="../screenshots/7-admin-high-swr.png" alt="Administration: high-SWR shutdown" width="600"><br><em>High-SWR shutdown with its default settings.</em></p>
 
 <p align="center"><img src="../screenshots/8-admin-control-and-locks.png" alt="Administration: control and locked settings" width="600"><br><em>Who may use the radio, and settings that only the administrator may change.</em></p>
@@ -412,6 +464,11 @@ Record; and set the radio's DSP and noise blanker before you leave. A quieter an
 | | Longest transmission | 300 s | 10–600 s. Then the radio is un-keyed |
 | Bands | Transmit per band, From/To MHz, reason | US edges | A locked band can still be listened to. Applies to the panel, WSJT-X and all CAT programs. It can't stop the microphone or a key plugged into the radio |
 | Modes | Transmit per mode, reason | all allowed | A locked mode can still be listened to: the radio won't transmit in it from the panel, WSJT-X or other CAT programs. Switching into a locked mode while transmitting is refused, and changing to one on the radio itself un-keys it |
+| APRS | Digipeater | fill-in | Off; fill-in (repeats WIDE1-1: the polite choice where full digipeaters cover the area); wide area (also WIDEn-N, like a hilltop digipeater: for emergencies or no coverage) |
+| | Extra aliases | none | Further names to repeat, e.g. an emergency or county alias agreed with your group |
+| | iGate | off | Receive only (radio to the internet) or two-way (internet messages on the air, only to stations heard here recently, at most 6 a minute). Needs internet and the passcode |
+| | APRS-IS server / passcode | noam.aprs2.net / none | The passcode is kept in its own file on the Pi (`aprs-secret.json`) and never shown again; tick "remove it" to delete it |
+| | Largest offline-map download | 2000 MB | The APRS page's Maps tab refuses anything bigger, and anything that would leave less than 1 GB free |
 | | Hide locked bands and modes on the panel | off | Their buttons disappear for everyone. A band locked by high SWR always stays visible |
 | Locked ranges | From/To MHz, reason | none | E.g. where your antenna isn't matched, or a local band-plan limit |
 | High-SWR shutdown | Shutdown on | on | The meters are read about 5 times a second while transmitting |
