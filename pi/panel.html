@@ -16,7 +16,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
-main { max-width: 980px; margin: 0 auto; padding: 14px 16px 40px; }
+main { max-width: 1240px; margin: 0 auto; padding: 14px 16px 40px; }
 header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
@@ -81,6 +81,18 @@ a.btn { color: var(--dim); font-size: 13px; text-decoration: none; padding: 4px 
 .conns { font-size: 13px; }
 .conns div { padding: 3px 0; border-bottom: 1px dashed var(--edge); }
 .conns div:last-child { border: 0; }
+#cwbox { margin-top: 10px; border-top: 1px solid var(--edge); padding-top: 4px; }
+#cwbox .row { margin-top: 8px; } #cwbox .v { min-width: 58px; font-size: 13px; }
+.cwio { display: grid !important; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+@media (max-width: 760px) { .cwio { grid-template-columns: 1fr; } }
+#cwrx { margin: 4px 0 0; height: 84px; overflow-y: auto; background: var(--lcd); color: var(--lcdtext); border-radius: 6px; padding: 6px 8px; font: 15px/1.35 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+#cwtext { flex: 1; min-width: 120px; font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; }
+.cwq { font: 14px ui-monospace, Menlo, Consolas, monospace; min-height: 20px; margin: 6px 0; word-break: break-word; }
+#cwsent { color: var(--dim); } #cwqueue { color: var(--text); background: rgba(255,180,84,.12); }
+#cwstat i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--edge); margin: 0 4px -1px 6px; } #cwstat i.on { background: #8dffb0; }
+#cwerr { color: var(--bad); }
+#wlopen { border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); padding: 6px 12px; font-size: 14px; }
+#cwmacs button { font-size: 13px; }
 .msg { min-height: 18px; font-size: 13px; color: var(--warn); margin-top: 8px; }
 .fm { display: none; } .fm.show { display: flex; }
 .wfhead { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
@@ -115,6 +127,38 @@ a.btn { color: var(--dim); font-size: 13px; text-decoration: none; padding: 4px 
 .favs small { color: var(--dim); }
 dialog { background: var(--card); color: var(--text); border: 1px solid var(--edge); border-radius: 10px; max-width: 440px; width: 92%; }
 dialog label { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; color: var(--dim); }
+/* radio display: stays at the top of the window while you scroll; thin meters inside it */
+.rig { position: sticky; top: 0; z-index: 5; padding: 10px; box-shadow: 0 4px 10px rgba(0,0,0,.18); }
+@media (max-width: 760px), (max-height: 560px) { .rig { position: static; } }
+.rigtop { display: grid; grid-template-columns: 1fr 150px; gap: 10px; }
+.pttbox #ptt { height: 100%; padding: 10px; font-size: 20px; }
+.lmeters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px 14px; margin-top: 6px; }
+.lm { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; font: 600 11px ui-monospace, Menlo, Consolas, monospace; color: var(--lcdtext); }
+.lm .v { min-width: 44px; text-align: right; } .lm.rx { cursor: pointer; }
+.lbar { height: 6px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--lcdtext) 16%, transparent); }
+.lbar i { display: block; height: 100%; width: 0; transition: width .15s; background: var(--good); }
+.lbar.po i { background: var(--bad); } .lbar.alc i { background: var(--warn); } .lbar.swr i { background: var(--accent); }
+.lbar.s i { background: linear-gradient(90deg, var(--good) 60%, var(--warn)); }
+.lmeters.idle .tx, .lmeters.tx .rx { opacity: .35; }
+@media (max-width: 600px) { .rigtop { grid-template-columns: 1fr; } .pttbox #ptt { padding: 18px; } .lmeters { grid-template-columns: 1fr 1fr; } }
+.vcrow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 6px; }
+.vcrow a.btn, .vcrow button { padding: 3px 10px; font-size: 13px; border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); }
+.vsep { width: 1px; align-self: stretch; background: var(--edge); }
+/* control deck: tune, band, mode and filter side by side */
+.deck { display: grid; grid-template-columns: 1.05fr 1fr 1fr 1.3fr; gap: 16px; }
+@media (max-width: 900px) { .deck { grid-template-columns: 1fr 1fr; } } @media (max-width: 520px) { .deck { grid-template-columns: 1fr; } }
+.dcol { min-width: 0; } .dcol h2 { margin-bottom: 8px; }
+.drow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.drow input.f { flex: 1; min-width: 0; width: auto; } .drow select { flex: 1; min-width: 0; }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 5px; }
+.bgrid button.wide { grid-column: span 2; } .bgrid button { min-width: 0; padding: 6px 2px; font-size: 14px; white-space: nowrap; }
+#presets { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); margin-bottom: 6px; } #presets button { font-size: 12px; }
+.gap { order: 1; grid-column: 1 / -1; font-size: 11px; color: var(--dim); border-top: 1px dashed var(--edge); padding-top: 3px; margin-top: 2px; }
+.hid { display: none !important; }
+#fsl .sl { grid-template-columns: 1fr auto; gap: 0 8px; margin: 4px 0; } #fsl .sl input { grid-column: 1 / -1; order: 3; }
+.chks { gap: 4px 12px; font-size: 13px; } .chks .chk { display: flex; gap: 5px; align-items: center; }
+.moderow .row { margin-top: 10px; }
+.opts { display: flex; flex-direction: column; gap: 12px; font-size: 14px; } .opts .chk { display: flex; gap: 8px; align-items: flex-start; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 6px; font-weight: 600; }
 </style>
 </head>
@@ -149,7 +193,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
       <canvas id="spec"></canvas><canvas id="wf"></canvas><div id="wfL" class="wfshade" hidden></div><div id="wfR" class="wfshade" hidden></div><div id="wfnotches"></div><div id="wfcur"></div>
       <div id="wfaxis"></div>
     </div>
-    <div class="hint" id="wfkey"><span style="color:var(--accent)">┃</span> blue: what you hear is between these two lines (drag them) · <span style="color:var(--bad)">┇</span> red: notch, removes a whistle there (double-click sets it; Manual notch below turns it off) <button id="wfreset" style="padding:1px 8px;font-size:12px">Reset filter</button></div>
+    <div class="hint" id="wfkey"><span style="color:var(--accent)">┃</span> blue: what you hear is between these two lines (drag them) · <span style="color:var(--bad)">┇</span> red: notch, removes a whistle there (double-click sets one, a second double-click sets Notch 2; their boxes turn them off) <button id="wfreset" style="padding:1px 8px;font-size:12px">Reset filter</button></div>
   </div>
 
   <div class="card" id="sccard">
@@ -158,6 +202,10 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
       <label>On a voice <select id="scact"><option value="stop">stop there</option><option value="quiet">go on when it goes quiet</option><option value="10">listen 10 s, go on</option></select></label>
       <label>Speed <select id="scspd"><option value="careful">Careful</option><option value="normal">Normal</option><option value="fast">Fast</option></select></label>
       <button id="scgo" hidden>Go on</button><button id="scskip" hidden title="Never stop here again (this browser)">Skip always</button>
+      <span class="vsep"></span>
+      <span id="vtrow" style="display:contents"><button id="vtgo" title="Listens to the voice and moves the dial so that it sounds right (SSB)">Tune in voice</button>
+        <label><input type="checkbox" id="vtauto"> Auto, once after I tune</label>
+        <button id="vttry" hidden></button><button id="vtundo" hidden>Undo</button><span class="small" id="vtmsg"></span></span>
     </div>
     <div class="row" id="scsegs"><label class="t" id="sctl">Voice</label><span id="scbtn" style="display:contents"></span><button id="sccust">Custom</button>
       <span id="sccustr" hidden><input id="sclo" class="s" inputmode="decimal" aria-label="from MHz"> to <input id="schi" class="s" inputmode="decimal" aria-label="to MHz"> MHz</span></div>
@@ -165,91 +213,96 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     <div id="scbox" hidden><canvas id="sccan"></canvas><div class="hint">Click a signal to tune there. Green: a voice was heard. Newest pass at the top.</div></div>
   </div>
 
-  <div class="grid">
-    <div>
-      <div class="card">
-        <div class="lcd">
-          <div class="top">
-            <span id="vfo">VFO A</span><span id="mode">---</span><span id="split" class="off">SPLIT</span>
-            <span id="busy" class="off">BUSY</span><span id="lock" class="off">LOCK</span><span id="rsh" hidden></span><span id="rtn" hidden></span><span id="txi" class="off">TX</span><span id="txlock" class="txlock" hidden>TX LOCKED</span>
-          </div>
-          <div class="freq" id="freq"></div>
-          <div class="txline" id="txline" hidden><span id="txl"></span> <button id="simplex" title="Repeater shift and tones off">Simplex</button></div>
+  <div class="card rig" id="rigcard">
+    <div class="rigtop">
+      <div class="lcd">
+        <div class="top">
+          <span id="vfo">VFO A</span><span id="mode">---</span><span id="split" class="off">SPLIT</span>
+          <span id="busy" class="off">BUSY</span><span id="lock" class="off">LOCK</span><span id="rsh" hidden></span><span id="rtn" hidden></span><span id="txi" class="off">TX</span><span id="txlock" class="txlock" hidden>TX LOCKED</span>
         </div>
-        <div class="hint" id="lsbhint" hidden></div>
-        <div class="hint">Scroll or click the upper/lower half of a digit to tune it · ← → tune by step · hold Space to talk</div>
-        <div class="row">
-          <label class="t">Tune</label>
-          <button data-step="-1">◀</button>
-          <select id="step">
+        <div class="freq" id="freq"></div>
+        <div class="txline" id="txline" hidden><span id="txl"></span> <button id="simplex" title="Repeater shift and tones off">Simplex</button></div>
+        <div class="lmeters idle" id="meters">
+          <div class="lm rx" title="S-meter"><span class="n">S</span><div class="lbar s"><i id="ms"></i></div><span class="v" id="vs">–</span></div>
+          <div class="lm tx"><span class="n">PO</span><div class="lbar po"><i id="mpo"></i></div><span class="v" id="vpo">–</span></div>
+          <div class="lm tx"><span class="n">ALC</span><div class="lbar alc"><i id="malc"></i></div><span class="v" id="valc">–</span></div>
+          <div class="lm tx"><span class="n">SWR</span><div class="lbar swr"><i id="mswr"></i></div><span class="v" id="vswr">–</span></div>
+        </div>
+      </div>
+      <div class="pttbox"><button id="ptt">PTT</button></div>
+    </div>
+    <div class="hint" id="lsbhint" hidden></div>
+    <div class="vcrow"><span class="small" id="pttinfo">Hold to talk. Needs the audio client running (Start FT-897 Voice).</span>
+      <a class="btn" id="vcstart" href="ft897voice://start" hidden title="Starts “Start FT-897 Voice” on this computer. Nothing happens? Run the installer once more (macOS/install.sh, or windows\install-link.bat), which sets this link up.">▶ Start voice client</a>
+      <button id="vcstop" hidden title="Ends the voice client on this computer (its window stays open)">■ Stop voice client</button></div>
+  </div>
+
+  <div class="card">
+    <div class="deck">
+      <div class="dcol">
+        <h2>Tune</h2>
+        <div class="drow"><button data-step="-1" aria-label="Tune down">◀</button>
+          <select id="step" aria-label="Tuning step">
             <option value="10">10 Hz</option><option value="100" selected>100 Hz</option><option value="500">500 Hz</option>
             <option value="1000">1 kHz</option><option value="2500">2.5 kHz</option><option value="5000">5 kHz</option>
             <option value="10000">10 kHz</option><option value="12500">12.5 kHz</option><option value="25000">25 kHz</option>
             <option value="100000">100 kHz</option><option value="1000000">1 MHz</option>
-          </select>
-          <button data-step="1">▶</button>
-          <input id="fin" class="f" placeholder="MHz, e.g. 14.250" inputmode="decimal">
-          <button id="fset">Set</button>
-        </div>
-        <div class="row" id="vtrow"><label class="t">Voice</label><button id="vtgo" title="Listens to the voice and moves the dial so that it sounds right (SSB)">Tune in voice</button>
-          <label class="small"><input type="checkbox" id="vtauto"> Automatically, once after I tune</label>
-          <button id="vttry" hidden></button><button id="vtundo" hidden>Undo</button><span class="small" id="vtmsg"></span></div>
-        <div class="row" id="bands"><label class="t">Band</label></div>
-        <div class="row" id="modes"><label class="t">Mode</label></div>
-        <div class="row"><label class="t"></label>
-          <label class="small"><input type="checkbox" id="autosimplex"> Clear repeater shift and tones when I tune more than 50 kHz away from a repeater</label></div>
-        <div class="row" id="digrow"><label class="t"></label>
-          <label class="small"><input type="checkbox" id="digvoice"> Voice through the Digirig: band buttons pick LSB voice
-            or DIG (= USB) instead of LSB/USB, where the 897 ignores the Digirig's audio</label></div>
-        <div class="row">
-          <label class="t">VFO</label>
-          <button id="va">A</button><button id="vb">B</button><button id="vswap" hidden title="Swaps VFO A and VFO B">A ⇄ B</button><button id="vsplit">Split</button>
-          <button id="vlock" title="Front-panel dial lock">Lock</button>
-        </div>
-        <div class="row">
-          <label class="t">RIT</label>
-          <button data-rit="-100">−100</button><button data-rit="-10">−10</button>
-          <span id="rit" style="min-width:70px;text-align:center">0 Hz</span>
-          <button data-rit="10">+10</button><button data-rit="100">+100</button><button data-rit="0">Clear</button>
-          <span class="small" id="ritnote">(set only: the 897 can't report it)</span>
-        </div>
-        <div class="row" id="pwrow" style="display:none"><label class="t">Power</label><input type="range" id="pw" min="5" max="100" step="1" style="flex:1;max-width:260px"><span id="pwv" style="min-width:60px">–</span><span class="small">set in the radio</span></div>
-        <div class="row fm" id="fmrow">
-          <label class="t">FM</label>
-          <button data-shift="-">−</button><button data-shift="0">Simplex</button><button data-shift="+">+</button>
-          <input id="offs" class="s" value="0.600" title="Repeater offset, MHz"><button id="offset">Offset</button>
-          <select id="tone"></select><button data-func="TONE">Tone</button><button data-func="TSQL">TSQL</button>
-          <select id="dcs" title="DCS code"></select><button data-dcs="dcs" title="DCS on transmit">DCS</button><button data-dcs="dsql" title="DCS on transmit and receive">DSQL</button>
-        </div>
-        <div class="msg" id="msg"></div>
+          </select><button data-step="1" aria-label="Tune up">▶</button></div>
+        <div class="drow"><input id="fin" class="f" placeholder="MHz, e.g. 14.250" inputmode="decimal"><button id="fset">Set</button></div>
+        <div class="drow"><button id="va">A</button><button id="vb">B</button><button id="vswap" hidden title="Swaps VFO A and VFO B">A ⇄ B</button><button id="vsplit">Split</button><button id="vlock" title="Front-panel dial lock">Lock</button></div>
+        <div class="hint" id="tunehint">Scroll or click a digit to tune it · ← → step · hold Space to talk</div>
+      </div>
+      <div class="dcol"><h2>Band</h2><div class="bgrid" id="bands"></div></div>
+      <div class="dcol"><h2>Mode</h2><div class="bgrid" id="modes"></div></div>
+      <div class="dcol" id="fcol"><h2>Filter</h2>
+        <div class="bgrid" id="presets"></div>
+        <div id="fsl"></div>
+        <div class="drow chks"><label class="chk" title="A notch you place: double-click the waterfall, or drag its red line"><input type="checkbox" id="notch"> Notch</label><label class="chk" title="A second notch. Double-clicking the waterfall turns on the first free one, or moves the nearer one"><input type="checkbox" id="notch2"> Notch 2</label><label class="chk"><input type="checkbox" id="anotch"> Auto notch</label>
+          <label class="chk" title="On: signals just outside the passband are cut hard (about 47 dB down 100 Hz outside). Off: the gentler filters of earlier versions."><input type="checkbox" id="sharp"> Sharp</label></div>
+        <div class="small" id="anl"></div>
       </div>
     </div>
-
-    <div>
-      <div class="card meters idle" id="meters">
-        <h2>Meters</h2>
-        <div class="m rx"><span class="n">S</span><div class="bar s"><i id="ms"></i></div><span class="v" id="vs">–</span></div>
-        <div class="scale"><span>1</span><span>3</span><span>5</span><span>7</span><span>9</span><span>+20</span><span>+40</span><span>+60</span></div>
-        <label class="small"><input type="checkbox" id="slive"> Live S-meter<span id="slnote"> (the voice client removes its ticks)</span></label>
-        <div class="m tx"><span class="n">Power</span><div class="bar po"><i id="mpo"></i></div><span class="v" id="vpo">–</span></div>
-        <div class="m tx"><span class="n">ALC</span><div class="bar alc"><i id="malc"></i></div><span class="v" id="valc">–</span></div>
-        <div class="m tx"><span class="n">SWR</span><div class="bar swr"><i id="mswr"></i></div><span class="v" id="vswr">–</span></div>
-        <div class="small" id="mnote">The 897 reports these in 16 steps; power is relative to the power you set on the radio.</div>
+    <div class="moderow">
+      <div id="cwbox" hidden>
+        <div class="row"><label class="t">CW</label>
+          <select id="cwkey" title="How the keyboard keys the radio. Space works as a straight key in every choice."><option value="straight">Straight key: hold Space</option><option value="bug">Bug: hold ← for dits, → for a dah</option><option value="iambic">Iambic paddles: ← dit, → dah</option></select>
+          <span class="small">Speed</span><input type="range" id="cwwpm" min="5" max="50" step="1" style="width:120px" aria-label="Speed"><span id="cwwpmv" class="v">20 WPM</span>
+          <span class="small">Spacing</span><select id="cwfarns" title="Farnsworth: characters at full speed, more space between them so the overall speed is slower"><option value="0">normal</option><option>5</option><option>8</option><option>10</option><option>13</option><option>15</option><option>18</option></select>
+          <span class="small">Pitch</span><select id="cwpitch" title="The tone you hear and send. The carrier is where the display says; the radio's dial sits this much lower in DIG."></select>
+          <span class="small">Hang</span><select id="cwhang" title="How long the radio stays on the air after your last dit or dah"><option value="0.3">0.3 s</option><option value="0.5">0.5 s</option><option value="0.8">0.8 s</option><option value="1.2">1.2 s</option><option value="2">2 s</option><option value="3">3 s</option></select>
+          <span class="small">Level</span><input type="range" id="cwlevel" min="-30" max="0" step="1" style="width:90px" aria-label="Level" title="How hard the tone drives the radio: watch ALC, and keep it out of the red"><span id="cwlevelv" class="v"></span>
+          <label class="chk" title="Your own keying, played in this browser at once (the radio sends it 0.25 s later)"><input type="checkbox" id="cwside"> Sidetone</label><input type="range" id="cwsvol" min="0" max="100" step="1" style="width:70px" aria-label="Sidetone volume">
+        </div>
+        <div class="row cwio">
+          <div><div class="small">Received <span id="cwstat"></span> <label class="chk" style="display:inline-flex" title="Follow a station that is a little off your pitch"><input type="checkbox" id="cwauto"> follow the signal</label> <button id="cwclear">Clear</button></div><pre id="cwrx"></pre></div>
+          <div><div class="small">Send <span id="cwerr"></span></div>
+            <div class="drow"><input id="cwtext" placeholder="Type, Enter sends · &lt;AR&gt; &lt;SK&gt; &lt;BT&gt; &lt;KN&gt;" autocomplete="off" spellcheck="false"><button id="cwsend" class="primary">Send</button><button id="cwstop" title="Stops sending at once (Esc)">Stop</button></div>
+            <div class="cwq"><span id="cwsent"></span><span id="cwqueue"></span></div>
+            <div class="drow" id="cwmacs"></div>
+          </div>
+        </div>
       </div>
-      <div class="card">
-        <button id="ptt">PTT</button>
-        <div class="small" id="pttinfo" style="margin-top:8px">Hold to talk. Needs the audio client running (Start FT-897 Voice).</div>
+      <div class="row fm" id="fmrow">
+        <label class="t">FM</label>
+        <button data-shift="-">−</button><button data-shift="0">Simplex</button><button data-shift="+">+</button>
+        <input id="offs" class="s" value="0.600" title="Repeater offset, MHz"><button id="offset">Offset</button>
+        <select id="tone"></select><button data-func="TONE">Tone</button><button data-func="TSQL">TSQL</button>
+        <select id="dcs" title="DCS code"></select><button data-dcs="dcs" title="DCS on transmit">DCS</button><button data-dcs="dsql" title="DCS on transmit and receive">DSQL</button>
       </div>
-      <div class="card conns">
-        <h2>Connected</h2>
-        <div id="conns">–</div>
-        <div class="row"><label class="small">This computer's name</label><input id="pname" class="s" style="width:150px"></div>
+      <div class="row" id="ritrow">
+        <label class="t">RIT</label>
+        <button data-rit="-100">−100</button><button data-rit="-10">−10</button>
+        <span id="rit" style="min-width:70px;text-align:center">0 Hz</span>
+        <button data-rit="10">+10</button><button data-rit="100">+100</button><button data-rit="0">Clear</button>
+        <span class="small" id="ritnote">(set only: the 897 can't report it)</span>
       </div>
+      <div class="row" id="pwrow" style="display:none"><label class="t">Power</label><input type="range" id="pw" min="5" max="100" step="1" style="flex:1;max-width:260px"><span id="pwv" style="min-width:60px">–</span><span class="small">set in the radio</span></div>
     </div>
+    <div class="msg" id="msg"></div>
   </div>
 
   <div class="card">
-    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button></div>
+    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button><button data-tab="wl">Winlink</button><button data-tab="opt">Options</button><button data-tab="conn">Connected</button></div>
     <div class="pane" id="pane-audio">
       <div class="small" id="audinfo"></div>
       <div class="ctl2" id="audctl">
@@ -260,12 +313,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
           <div id="rxsl"></div>
           <div class="sl"><span>Noise method</span><select id="nrkind" title="Standard: removes steady hiss. Neural (RNNoise): trained on speech, often clearer, but it can also turn down a very weak voice, so compare both. The Noise reduction slider sets how much is removed for both."><option value="std">Standard</option><option value="neural">Neural (RNNoise)</option></select><span class="small" id="nrkl"></span></div>
           <div class="sl"><span>Levelling</span><select id="agc"><option value="off">Off</option><option value="slow">Slow</option><option value="fast">Fast</option></select><span></span></div>
-          <div class="sl"><label class="chk"><input type="checkbox" id="anotch"> Auto notch (whistles, carriers) <span class="small" id="anl"></span></label></div>
-          <div class="sl"><label class="chk"><input type="checkbox" id="notch"> Manual notch (drag its line in the waterfall)</label></div>
-          <div class="sl"><label class="chk" title="On: signals just outside the passband are cut hard (about 47 dB down 100 Hz outside). Off: the gentler filters of earlier versions."><input type="checkbox" id="sharp"> Sharp filter edges</label></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="tick"> Remove CAT ticks</label></div>
           <div class="sl"><label class="chk"><input type="checkbox" id="squelch"> Voice squelch <span class="small" id="sql"></span></label></div>
-          <div class="row" id="presets"><span class="small">Passband</span></div>
         </div>
         <div>
           <h2>Transmit</h2>
@@ -290,8 +339,36 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
       <div class="reps"><table><thead><tr><th></th><th>Output</th><th>Shift</th><th>Tone</th><th>Call</th><th>Place</th><th></th></tr></thead><tbody id="rbody"></tbody></table></div>
       <div class="small" style="margin-top:6px">Export a CSV from your own <a href="https://www.repeaterbook.com" target="_blank" rel="noopener">RepeaterBook</a> account and import it here (personal use). Data courtesy of RepeaterBook.com. CHIRP CSV files work too.</div>
     </div>
+    <div class="pane" id="pane-wl">
+      <div class="small" id="wlstat">–</div>
+      <div class="row"><label class="t">Call sign</label><input id="wlcall" style="width:110px;text-transform:uppercase" autocomplete="off" spellcheck="false">
+        <span class="small">Grid</span><input id="wlloc" style="width:80px" placeholder="EM20" autocomplete="off" spellcheck="false">
+        <span class="small">Bandwidth</span><select id="wlbw"><option value="500">VARA 500</option><option value="2300">VARA 2300</option><option value="2750">VARA 2750</option></select>
+        <span class="small">Drive</span><input type="range" id="wldrive" min="-30" max="0" step="1" style="width:100px" aria-label="Drive"><span id="wldrivev" class="small" style="min-width:56px"></span></div>
+      <div class="row"><button id="wlgo" class="primary">Start Winlink</button><button id="wlstop">Stop Winlink</button><a class="btn" id="wlopen" target="_blank" rel="noopener" hidden>✉ Open the mailbox (Pat)</a></div>
+      <div class="small" style="margin-top:8px">Winlink runs on the Pi: xara (a VARA HF modem) and Pat (the mail program). Open the mailbox, write or read mail, then
+        Connect → VARA HF and pick a gateway: Pat tunes the radio. Pat asks for your Winlink password the first time; it stays on the Pi.
+        While Winlink runs the voice client can't connect (one audio link at a time) and the radio stays in DIG. Every transmit lock and safety check still applies.</div>
+      <pre id="wllog" style="max-height:150px;overflow:auto;font-size:12px;background:var(--lcd);color:var(--lcdtext);border-radius:6px;padding:6px 8px;margin:8px 0 0;white-space:pre-wrap"></pre>
+    </div>
+    <div class="pane" id="pane-opt">
+      <div class="opts">
+        <label class="chk"><input type="checkbox" id="slive"> Live S-meter<span id="slnote"> (the voice client removes its ticks)</span></label>
+        <label class="chk"><input type="checkbox" id="autosimplex"> Clear repeater shift and tones when I tune more than 50 kHz away from a repeater</label>
+        <label class="chk" id="digrow"><input type="checkbox" id="digvoice"> Voice through the Digirig: band buttons pick LSB voice or DIG (= USB) instead of LSB/USB, where the 897 ignores the Digirig's audio</label>
+        <label class="chk"><input type="checkbox" id="hidelk"> Hide receive-only bands and modes on this computer</label>
+        <div class="small" id="mnote">The 897 reports these in 16 steps; power is relative to the power you set on the radio.</div>
+      </div>
+    </div>
+    <div class="pane conns" id="pane-conn">
+      <div id="conns">–</div>
+      <div class="row"><label class="small">This computer's name</label><input id="pname" class="s" style="width:150px"></div>
+    </div>
   </div>
 </main>
+<dialog id="cwdlg"><form method="dialog"><h2>CW buttons</h2><p style="font-size:13px;margin:6px 0">One button per line: <b>label = text</b>. {CALL} becomes your call sign, {RST} the report you type in the Send box first if any.</p>
+  <label>My call sign <input id="cwcall" autocomplete="off" style="text-transform:uppercase"></label><textarea id="cwmtext" rows="7" style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
+  <div class="row"><button value="cancel">Cancel</button><button type="button" id="cwmdef">Defaults</button><span style="flex:1"></span><button id="cwmsave" value="ok" class="primary">Save</button></div></form></dialog>
 <dialog id="tdlg"><form method="dialog"><h2>Transmit a test tone</h2><p id="ttext" style="white-space:pre-line;font-size:14px"></p>
   <div class="row"><button value="cancel" autofocus>Cancel</button><span style="flex:1"></span><button id="tgo" value="go" class="primary">Transmit 3 s</button></div></form></dialog>
 <dialog id="pdlg"><form method="dialog" id="pform"><h2>Password</h2><p style="font-size:14px;margin:6px 0">Taking control of this radio needs the operator password.</p>
@@ -318,7 +395,7 @@ const BANDS = [
   ["17", 18.068e6, 18.168e6, 18.130e6, "USB"], ["15", 21.0e6, 21.45e6, 21.300e6, "USB"], ["12", 24.89e6, 24.99e6, 24.950e6, "USB"],
   ["10", 28.0e6, 29.7e6, 28.400e6, "USB"], ["6", 50e6, 54e6, 50.125e6, "USB"], ["2m", 144e6, 148e6, 146.520e6, "FM"],
   ["70cm", 420e6, 450e6, 446.000e6, "FM"]];
-const MODE_LABEL = { PKTUSB: "DIG", DLSB: "LSB voice" };   // the 897's DIG mode (USER-U / USER-L is a radio menu setting)
+const MODE_LABEL = { PKTUSB: "DIG", DLSB: "LSB voice", DCW: "CW keyer" };   // the 897's DIG mode (USER-U / USER-L is a radio menu setting)
 const TONES = [67.0,69.3,71.9,74.4,77.0,79.7,82.5,85.4,88.5,91.5,94.8,97.4,100.0,103.5,107.2,110.9,114.8,118.8,123.0,127.3,
   131.8,136.5,141.3,146.2,151.4,156.7,159.8,162.2,165.5,167.9,171.3,173.8,177.3,179.9,183.5,186.2,189.9,192.8,196.6,199.5,
   203.5,206.5,210.7,218.1,225.7,229.1,233.6,241.8,250.3,254.1];
@@ -331,7 +408,7 @@ function applyRadio(d) {
   document.title = $("ttl").textContent = d.name + " Remote";
   document.querySelectorAll("[data-band]").forEach(b => { const z = BANDS.find(x => x[0] === b.dataset.band); b.style.display = z && z[1] > d.max ? "none" : ""; });
   for (const o of [...$("rband").options]) { const z = BANDS.find(x => x[0] === o.value); if (z && z[1] > d.max) o.remove(); }
-  if (!c.lsb) { Object.assign(MODE_LABEL, { PKTUSB: "DATA-U", PKTLSB: "DATA-L", FMN: "FM-N" }); $("digrow").style.display = "none"; $("digvoice").checked = false; document.querySelectorAll("[data-mode]").forEach(b => b.textContent = MODE_LABEL[b.dataset.mode] || b.dataset.mode); }
+  if (!c.lsb) { Object.assign(MODE_LABEL, { PKTUSB: "DATA-U", PKTLSB: "DATA-L", FMN: "FM-N" }); $("digrow").style.display = "none"; $("digvoice").checked = false; document.querySelectorAll("[data-mode]").forEach(b => { b.textContent = MODE_LABEL[b.dataset.mode] || b.dataset.mode; b.classList.toggle("wide", b.textContent.length > 5); }); }
   hide("va", !c.vfo); hide("vb", !c.vfo); hide("vswap", !c.swap); hide("ritnote", c.reports); hide("slnote", !d.ticks); hide("offset", !c.offset); $("offs").readOnly = !c.offset; if (!c.offset) $("offs").title = "Set in the radio's menu (RPT SHIFT 28MHz / 50MHz)";
   document.querySelectorAll("[data-dcs]").forEach(b => b.hidden = !c.dcs.includes(b.dataset.dcs));
   $("pwrow").style.display = c.power ? "" : "none"; if (c.power) { $("pw").min = c.power[0]; $("pw").max = c.power[1]; }
@@ -344,6 +421,7 @@ $("pname").value = store("ft897.name") || "";
 $("pname").onchange = () => store("ft897.name", $("pname").value.trim());
 $("autosimplex").checked = store("ft897.autosimplex") === "1"; $("autosimplex").onchange = () => store("ft897.autosimplex", $("autosimplex").checked ? "1" : "0");
 $("digvoice").checked = store("ft897.digvoice") === "1";
+$("hidelk").checked = store("ft897.hidelk") === "1"; $("hidelk").onchange = () => { store("ft897.hidelk", $("hidelk").checked ? "1" : "0"); if (S) render(); };
 $("digvoice").onchange = () => store("ft897.digvoice", $("digvoice").checked ? "1" : "0");
 const headers = () => ({ "Content-Type": "application/json", "X-Panel": "1", "X-Panel-Name": ($("pname").value || "").trim() });
 
@@ -412,10 +490,12 @@ for (const b of BANDS) {
   };
   $("bands").appendChild(el);
 }
+{ const g = document.createElement("div"); g.id = "bandgap"; g.className = "gap hid"; g.textContent = "Receive only"; $("bands").appendChild(g); }
 function buildModes(list) {
   if ($("modes").dataset.built) return; $("modes").dataset.built = 1;
+  { const g = document.createElement("div"); g.id = "modegap"; g.className = "gap hid"; g.textContent = "Receive only"; $("modes").appendChild(g); }
   for (const m of list) {
-    const el = document.createElement("button"); el.textContent = MODE_LABEL[m] || m; el.dataset.mode = m; el.title = !RD().caps.lsb ? "" : m === "DLSB" ? "Real LSB through the Digirig: the radio stays in DIG with its dial 3 kHz lower" : m === "PKTUSB" ? "The radio's DIG mode (USER-U): voice on USB, FT8" : m === "USB" || m === "LSB" ? "The radio's own " + m + ": listening only, it takes no audio from the Digirig" : m;
+    const el = document.createElement("button"); el.textContent = MODE_LABEL[m] || m; el.dataset.mode = m; el.title = !RD().caps.lsb ? "" : m === "DLSB" ? "Real LSB through the Digirig: the radio stays in DIG with its dial 3 kHz lower" : m === "DCW" ? "Send CW from the keyboard: the radio stays in DIG and the Pi sends a keyed tone, which is CW on the air" : m === "CW" || m === "CWR" ? "The radio's own " + m + ": listening only (it needs a key in its KEY jack to send). To send CW from here use CW keyer" : m === "PKTUSB" ? "The radio's DIG mode (USER-U): voice on USB, FT8" : m === "USB" || m === "LSB" ? "The radio's own " + m + ": listening only, it takes no audio from the Digirig" : m; el.dataset.tip = el.title; if (el.textContent.length > 5) el.classList.add("wide");
     el.onclick = () => { scanStop("stopped: mode changed"); cmd({ a: "mode", mode: m }); }; $("modes").appendChild(el);
   }
 }
@@ -491,6 +571,11 @@ $("notes").onclick = e => {
   else if (k.startsWith("swr:")) { if (confirm("Reset the high-SWR lock? Only after checking the antenna.")) post("/api/swr_reset", { band: k.slice(4) }); }
 };
 $("simplex").onclick = () => cmd({ a: "simplex" });
+document.querySelector("#meters .rx").onclick = () => { if (S && S.allowed) { $("slive").checked = !$("slive").checked; $("slive").onchange(); } };
+$("vcstop").onclick = async () => { if (!S || S.keyed) return msg("not while transmitting");
+  if (S.audio && S.audio.ip !== S.you && !confirm("Stop the voice client on " + S.audio.name + "? Its audio ends.")) return;
+  cmd({ a: "audio", act: "quit" }); };
+$("vcstart").onclick = () => msg("starting the voice client: allow it if the browser asks. Nothing happens? See the button's tooltip");
 $("slive").onchange = () => { cmd({ a: "smeter", on: $("slive").checked }); $("slive").blur(); };
 $("release").onclick = () => post("/api/release");
 
@@ -510,10 +595,10 @@ function pttUp() {
   post("/api/ptt", { on: false });
 }
 const p = $("ptt");
-p.addEventListener("pointerdown", e => { e.preventDefault(); p.setPointerCapture(e.pointerId); pttDown(); });
-["pointerup", "pointercancel", "lostpointercapture"].forEach(ev => p.addEventListener(ev, pttUp));
-window.addEventListener("blur", pttUp);
-document.addEventListener("visibilitychange", () => { if (document.hidden) pttUp(); });
+p.addEventListener("pointerdown", e => { e.preventDefault(); p.setPointerCapture(e.pointerId); if (cwOn()) cwPress("m", true); else pttDown(); });
+["pointerup", "pointercancel", "lostpointercapture"].forEach(ev => p.addEventListener(ev, () => { if (CW.held.m) cwPress("m", false); else pttUp(); }));
+window.addEventListener("blur", () => { pttUp(); cwRelease(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { pttUp(); cwRelease(); } });
 const typing = () => document.querySelector("dialog[open]") || (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)
   && !["range", "checkbox"].includes(document.activeElement.type));
 // a clicked button, box or slider must not keep the focus: Space is the PTT key
@@ -521,12 +606,122 @@ document.addEventListener("pointerup", () => setTimeout(() => { const el = docum
   if (el && !document.querySelector("dialog[open]") && (el.tagName === "BUTTON" || ["range", "checkbox"].includes(el.type))) el.blur(); }, 0));
 document.addEventListener("change", e => { if (e.target.tagName === "SELECT" && !document.querySelector("dialog[open]")) e.target.blur(); });
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && cwOn()) { cwStop(); return; }
   if (typing() || e.code !== "Space" && document.activeElement.tagName === "INPUT") return;      // arrows belong to a focused slider
+  if (cwOn() && (e.code === "Space" || e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); if (!e.repeat) cwPress(e.code === "Space" ? "s" : e.key === "ArrowLeft" ? "l" : "r", true); return; }
   if (e.code === "Space") { e.preventDefault(); if (!e.repeat) pttDown(); }
   else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); setFreq(curFreq() + +$("step").value, true); }
   else if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); setFreq(curFreq() - +$("step").value, true); }
 });
-document.addEventListener("keyup", e => { if (e.code === "Space" && !typing()) { e.preventDefault(); pttUp(); } });
+document.addEventListener("keyup", e => {
+  if (e.code === "Space" || e.key === "ArrowLeft" || e.key === "ArrowRight") { const k = e.code === "Space" ? "s" : e.key === "ArrowLeft" ? "l" : "r"; if (CW.held[k]) { e.preventDefault(); cwPress(k, false); return; } }
+  if (e.code === "Space" && !typing()) { e.preventDefault(); pttUp(); } });
+
+// ---------- CW keyer (mode DCW). The keying is timed here, on this computer's clock; the Pi replays it 0.25 s later, so
+// the network can't change a dit. Sidetone is played here at once.
+const CW = { held: {}, q: [], busy: false, t: 0, manual: null, last: 0, mem: { l: false, r: false }, hb: null, ctx: null, osc: null, g: null, setT: null };
+const cwOn = () => !!(S && S.rig && S.rig.mode === "DCW" && S.cw && S.cw.on);
+const cwDit = () => 1200 / (+$("cwwpm").value || 20);
+function cwSide() {
+  if (!$("cwside").checked) return null;
+  try {
+    if (!CW.ctx) { CW.ctx = new AudioContext(); CW.osc = CW.ctx.createOscillator(); CW.g = CW.ctx.createGain(); CW.g.gain.value = 0; CW.osc.connect(CW.g).connect(CW.ctx.destination); CW.osc.start(); }
+    if (CW.ctx.state === "suspended") CW.ctx.resume();
+    CW.osc.frequency.value = S && S.cw ? S.cw.pitch : 700; return CW.ctx;
+  } catch (e) { return null; }
+}
+function cwEv(ms, down) {                                   // one key-down or key-up at ms (performance.now() time)
+  const c = cwSide();
+  if (c) { const at = Math.max(c.currentTime, c.currentTime + (ms - performance.now()) / 1000), v = down ? Math.pow(+$("cwsvol").value / 100, 2) * 0.5 : 0;
+    CW.g.gain.setTargetAtTime(v, at, 0.002); }
+  CW.q.push([Math.round(ms * 10) / 10, down ? 1 : 0]); cwFlush();
+}
+async function cwFlush() {                                  // one request at a time: the events arrive in order
+  if (CW.busy || !CW.q.length) return; CW.busy = true;
+  const ev = CW.q.splice(0, 100);
+  try { const ok = await post("/api/cw", { op: "key", ev }); if (!ok) { cwRelease(); CW.q.length = 0; } } finally { CW.busy = false; if (CW.q.length) cwFlush(); }
+}
+function cwPress(k, down) {
+  if (down) { if (CW.held[k]) return; CW.held[k] = true; } else { if (!CW.held[k]) return; delete CW.held[k]; }
+  const now = performance.now(), d = cwDit(), mode = $("cwkey").value;
+  const manual = k === "s" || k === "m" || (k === "r" && mode === "bug") || (mode === "straight" && (k === "l" || k === "r"));
+  if (manual) {
+    if (down) { if (CW.manual) return; const t = Math.max(now, CW.t); CW.manual = { k, t }; CW.t = Infinity; cwEv(t, true); }
+    else if (CW.manual && CW.manual.k === k) { const t = Math.max(now, CW.manual.t + 10); cwEv(t, false); CW.t = t + d; CW.manual = null; }
+  } else if (down) { if (CW.t < now - d && !CW.held[k === "l" ? "r" : "l"]) CW.last = k === "l" ? 3 : 1; CW.mem[k] = true; }   // a paddle: the element starts in cwTick (a squeeze starts with the first one pressed)
+  cwHb();
+}
+function cwRelease() { for (const k of Object.keys(CW.held)) cwPress(k, false); CW.mem = { l: false, r: false }; }
+function cwHb() {                                           // while a key is held, tell the Pi it still is (it lets go after 1 s of silence)
+  const any = Object.keys(CW.held).length > 0;
+  if (any && !CW.hb) CW.hb = setInterval(() => { if (!CW.busy && Object.keys(CW.held).length) post("/api/cw", { op: "key", ev: [] }); }, 300);
+  if (!any && CW.hb) { clearInterval(CW.hb); CW.hb = null; }
+}
+function cwTick() {                                         // bug dits and iambic elements, scheduled a moment ahead
+  if (CW.manual) return;
+  const now = performance.now(), d = cwDit(), mode = $("cwkey").value;
+  if (mode === "straight") return;
+  while (CW.t <= now + 25) {
+    let el = 0;
+    if (mode === "bug") { if (CW.held.l || CW.mem.l) el = 1; }
+    else {
+      const l = CW.held.l || CW.mem.l, r = CW.held.r || CW.mem.r;
+      if (l && r) el = CW.last === 1 ? 3 : 1; else if (l) el = 1; else if (r) el = 3;
+    }
+    CW.mem = { l: false, r: false };
+    if (!el) break;
+    const t = Math.max(CW.t, now); cwEv(t, true); cwEv(t + el * d, false); CW.t = t + el * d + d; CW.last = el;
+  }
+  if (mode === "iambic" && CW.t > now) { if (CW.held.l && CW.last === 3) CW.mem.l = true; if (CW.held.r && CW.last === 1) CW.mem.r = true; }
+}
+setInterval(() => { if (cwOn() || Object.keys(CW.held).length) cwTick(); }, 5);
+function cwStop() { cwRelease(); CW.q.length = 0; CW.t = 0; post("/api/cw", { op: "stop" }); if (CW.g) CW.g.gain.cancelScheduledValues(0), CW.g.gain.value = 0; }
+const CWMAC0 = "CQ = CQ CQ CQ DE {CALL} {CALL} K\nQRZ = QRZ? DE {CALL} K\nCall = DE {CALL}\nRST = UR RST {RST} {RST} <BT>\nName = NAME HR IS\n73 = TNX FER QSO 73 <SK>\nAR = <AR>\nKN = <KN>";
+function cwMacros() {
+  const call = (store("ft897.call") || "").toUpperCase(), L = (store("ft897.cwmac") || CWMAC0).split("\n").map(l => l.split(/\s*=\s*/)).filter(x => x.length >= 2 && x[0].trim());
+  $("cwmacs").innerHTML = ""; for (const [lab, ...rest] of L) { const b = document.createElement("button"); b.textContent = lab.trim(); const txt = rest.join("=");
+    b.onclick = () => { const rst = $("cwtext").value.trim() || "599"; if (txt.includes("{CALL}") && !call) return cwEdit("Set your call sign first");
+      const t = txt.replaceAll("{CALL}", call).replaceAll("{RST}", rst); if (txt.includes("{RST}")) $("cwtext").value = ""; cwSend(t); }; $("cwmacs").appendChild(b); }
+  const e = document.createElement("button"); e.textContent = "Edit…"; e.title = "Change these buttons and your call sign"; e.onclick = () => cwEdit(); $("cwmacs").appendChild(e);
+}
+function cwEdit(why) { $("cwcall").value = store("ft897.call") || ""; $("cwmtext").value = store("ft897.cwmac") || CWMAC0; if (why) msg(why); $("cwdlg").showModal(); }
+$("cwmdef").onclick = () => { $("cwmtext").value = CWMAC0; };
+$("cwmsave").onclick = () => { store("ft897.call", $("cwcall").value.trim().toUpperCase()); store("ft897.cwmac", $("cwmtext").value.trim()); cwMacros(); };
+async function cwSend(t) { t = (t || "").trim(); if (!t) return; if (await post("/api/cw", { op: "text", text: t + " " })) $("cwerr").textContent = ""; }
+$("cwsend").onclick = () => { const t = $("cwtext").value; $("cwtext").value = ""; cwSend(t); $("cwtext").focus(); };
+$("cwtext").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("cwsend").click(); } else if (e.key === "Escape") { e.preventDefault(); cwStop(); } };
+$("cwstop").onclick = cwStop; $("cwclear").onclick = () => post("/api/cw", { op: "clear" });
+const cwSet = o => { clearTimeout(CW.setT); CW.setT = setTimeout(() => post("/api/cw", { op: "set", ...o }), 150); CW.setAt = Date.now(); };
+for (let p = 400; p <= 1000; p += 50) { const o = document.createElement("option"); o.value = p; o.textContent = p + " Hz"; $("cwpitch").appendChild(o); }
+$("cwwpm").oninput = () => { $("cwwpmv").textContent = $("cwwpm").value + " WPM"; cwSet({ wpm: +$("cwwpm").value }); };
+$("cwlevel").oninput = () => { $("cwlevelv").textContent = $("cwlevel").value + " dBFS"; cwSet({ level: +$("cwlevel").value }); };
+$("cwpitch").onchange = () => cwSet({ pitch: +$("cwpitch").value });
+$("cwhang").onchange = () => cwSet({ hang: +$("cwhang").value });
+$("cwfarns").onchange = () => cwSet({ farns: +$("cwfarns").value });
+$("cwauto").onchange = () => cwSet({ auto: $("cwauto").checked });
+$("cwkey").value = store("ft897.cwkey") || "bug"; $("cwkey").onchange = () => { store("ft897.cwkey", $("cwkey").value); cwRelease(); };
+$("cwside").checked = store("ft897.cwside") !== "0"; $("cwside").onchange = () => store("ft897.cwside", $("cwside").checked ? "1" : "0");
+$("cwsvol").value = store("ft897.cwsvol") || 40; $("cwsvol").oninput = () => store("ft897.cwsvol", $("cwsvol").value);
+cwMacros();
+let cwRxShown = null;
+function cwRender(on) {
+  $("cwbox").hidden = !on;
+  $("tunehint").textContent = on ? "Scroll or click a digit to tune it · ↑ ↓ step · Space / ← → key the radio" : "Scroll or click a digit to tune it · ← → step · hold Space to talk";
+  $("pttinfo").dataset.cw = on ? "1" : "";
+  if (!on) { if (Object.keys(CW.held).length) cwRelease(); return; }
+  const c = S.cw, act = document.activeElement;
+  if (Date.now() - (CW.setAt || 0) > 1500) {
+    if (act !== $("cwwpm")) { $("cwwpm").value = c.wpm; $("cwwpmv").textContent = c.wpm + " WPM"; }
+    if (act !== $("cwlevel")) { $("cwlevel").value = c.level; $("cwlevelv").textContent = Math.round(c.level) + " dBFS"; }
+    $("cwpitch").value = c.pitch; $("cwhang").value = String(c.hang); if ($("cwhang").value !== String(c.hang)) { const o = document.createElement("option"); o.value = c.hang; o.textContent = c.hang + " s"; $("cwhang").appendChild(o); $("cwhang").value = c.hang; }
+    $("cwfarns").value = String(c.farns || 0); $("cwauto").checked = !!c.auto;
+  }
+  if (c.rx !== cwRxShown) { const box = $("cwrx"), end = box.scrollTop + box.clientHeight >= box.scrollHeight - 4; box.textContent = c.rx; cwRxShown = c.rx; if (end) box.scrollTop = box.scrollHeight; }
+  $("cwstat").innerHTML = `<i class="${c.rx_on ? "on" : ""}"></i>${c.rx_f} Hz · ${c.rx_wpm} WPM · ${c.rx_snr > 0 ? c.rx_snr + " dB" : "no signal"}`;
+  $("cwsent").textContent = c.sent.slice(-40); $("cwqueue").textContent = c.queue;
+  $("cwerr").textContent = c.err || "";
+  const lk = S.access && S.access.locks && S.access.locks.txaudio && S.access.role !== "admin"; $("cwlevel").disabled = lk;
+}
 
 // ---------- state
 function bar(id, frac) { $(id).style.width = Math.max(0, Math.min(1, frac)) * 100 + "%"; }
@@ -538,18 +733,26 @@ function render() {
   if (!(pending && Date.now() - pending.t < 1500)) renderFreq(r.freq || 0);
   $("vfo").textContent = r.vfo === "VFOB" ? "VFO B" : "VFO A";
   $("mode").textContent = MODE_LABEL[r.mode] || r.mode || "---";
-  const own = rd.caps.lsb && (r.mode === "USB" || r.mode === "LSB") && S.client && S.client.voice; $("lsbhint").hidden = !(r.mode === "DLSB" || own);
-  $("lsbhint").textContent = r.mode === "DLSB" ? `Real LSB on the air. The radio itself shows DIG, ${((r.dial || 0) / 1e6).toFixed(5)} MHz (3 kHz lower).` : own ? `The radio takes no voice from the Digirig in ${r.mode}: to talk, use ${r.mode === "LSB" ? "LSB voice" : "DIG"}.` : "";
+  const own = rd.caps.lsb && (r.mode === "USB" || r.mode === "LSB") && S.client && S.client.voice; $("lsbhint").hidden = !(r.mode === "DLSB" || r.mode === "DCW" || own);
+  $("lsbhint").textContent = r.mode === "DCW" ? `CW keyer: the carrier is on the display; the radio itself shows DIG, ${((r.dial || 0) / 1e6).toFixed(5)} MHz (${S.cw ? S.cw.pitch : 700} Hz lower).` : r.mode === "DLSB" ? `Real LSB on the air. The radio itself shows DIG, ${((r.dial || 0) / 1e6).toFixed(5)} MHz (3 kHz lower).` : own ? `The radio takes no voice from the Digirig in ${r.mode}: to talk, use ${r.mode === "LSB" ? "LSB voice" : "DIG"}.` : "";
   $("split").classList.toggle("off", !r.split); $("busy").classList.toggle("off", !r.busy);
   $("lock").classList.toggle("off", !locked);
   const tx = !!(S.keyed || r.ptt);
   $("txi").classList.toggle("off", !tx); $("txi").classList.toggle("tx", tx);
   buildModes(S.modes || []);
-  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === r.mode));
   const band = bandOf(r.freq || 0);
-  const a = S.access || { bands: {}, trips: {}, locks: {} };
-  document.querySelectorAll("[data-band]").forEach(b => { const k = b.dataset.band, why = a.trips[k] ? "high SWR: locked until reset" : a.bands[k];
-    b.classList.toggle("on", band && k === band[0]); b.classList.toggle("locked", !!why); b.title = why ? "Receive only: " + why : ""; });
+  const a = S.access || { bands: {}, trips: {}, locks: {} }, hide = !!a.hide_locked || $("hidelk").checked, am = a.modes || {};
+  // transmit bands and modes first, receive-only ones after a gap; hidden when asked (never the one in use, nor an SWR trip)
+  let rxo = 0;
+  document.querySelectorAll("[data-band]").forEach(b => { const k = b.dataset.band, on = !!(band && k === band[0]), why = a.trips[k] ? "high SWR: locked until reset" : a.bands[k];
+    b.classList.toggle("on", on); b.classList.toggle("locked", !!why); b.title = why ? "Receive only: " + why : ""; b.style.order = why ? 2 : 0;
+    const gone = hide && !!a.bands[k] && !a.trips[k] && !on; b.classList.toggle("hid", gone); if (why && !gone && b.style.display !== "none") rxo++; });
+  $("bandgap").classList.toggle("hid", !rxo);
+  let mro = 0;
+  document.querySelectorAll("[data-mode]").forEach(b => { const m = b.dataset.mode, on = m === r.mode, why = m in am ? am[m] || "locked" : "";
+    b.classList.toggle("on", on); b.classList.toggle("locked", !!why); b.title = why ? "Receive only: " + why : b.dataset.tip || ""; b.style.order = why ? 2 : 0;
+    const gone = hide && !!why && !on; b.classList.toggle("hid", gone); if (why && !gone) mro++; });
+  $("modegap").classList.toggle("hid", !mro);
   const adm = a.role === "admin", noTx = a.locks.txaudio && !adm;
   $("txsl").classList.toggle("offline", !!noTx); $("txsl").title = noTx ? "Locked by the administrator" : ""; $("txpre").title = $("txsl").title;
   for (const k of ["radd", "rimp", "rclear"]) $(k).style.display = a.locks.repeaters && !adm ? "none" : "";
@@ -569,11 +772,12 @@ function render() {
   $("va").classList.toggle("on", r.vfo !== "VFOB"); $("vb").classList.toggle("on", r.vfo === "VFOB");
   $("vsplit").classList.toggle("on", !!r.split); $("vlock").classList.toggle("on", locked);
   rit = S.rit || 0; $("rit").textContent = (rit > 0 ? "+" : "") + rit + " Hz";
-  $("fmrow").classList.toggle("show", fm); if (!rd.caps.offset && R.offset) $("offs").value = (R.offset / 1e6).toFixed(3);
+  cwRender(r.mode === "DCW");
+  $("fmrow").classList.toggle("show", fm); $("ritrow").style.display = fm ? "none" : ""; if (!rd.caps.offset && R.offset) $("offs").value = (R.offset / 1e6).toFixed(3);
   document.querySelectorAll("[data-func]").forEach(b => b.classList.toggle("on", funcs[b.dataset.func]));
   dcsList(S.dcs_codes); document.querySelectorAll("[data-dcs]").forEach(b => b.classList.toggle("on", dcsOn === b.dataset.dcs));
   // meters
-  $("meters").className = "card meters " + (tx ? "tx" : "idle");
+  $("meters").className = "lmeters " + (tx ? "tx" : "idle");
   const sOff = S.listening && !S.smeter_live;                  // the bridge keeps the CAT line quiet while you listen
   $("slive").checked = !!S.smeter_live;
   if (!tx && sOff) { bar("ms", 0); $("vs").textContent = "off"; }
@@ -589,13 +793,16 @@ function render() {
   $("ctl").textContent = S.owner ? (mine ? "You have control" : "Controlled by " + S.owner_name) : a.in_use ? "In use by " + a.in_use : a.need_control ? "Nobody in control" : "Shared";
   $("take").textContent = a.in_use ? "Ask for control" : "Take control"; $("take").disabled = !!(a.req && a.req.mine);
   $("take").style.display = mine ? "none" : ""; $("release").style.display = mine ? "" : "none";
-  document.querySelectorAll(".card button, .card select, .card input:not(#pname):not(#rq)").forEach(el => el.disabled = !S.allowed);
+  document.querySelectorAll(".card button:not([data-tab]), .card select, .card input:not(#pname):not(#rq):not(#hidelk)").forEach(el => el.disabled = !S.allowed);
   p.disabled = !S.allowed || !!a.tx_why && !pttHeld;
   p.classList.toggle("live", pttHeld);
   p.classList.toggle("other", S.keyed && !S.mine && !pttHeld);
   p.textContent = pttHeld ? "TRANSMITTING " + (S.mine ? S.keyed_for.toFixed(0) + " s" : "") :
                   S.keyed ? "ON AIR (" + (S.keyed_by || "").replace(/^web:/, "panel ") + ")" : "PTT";
-  $("pttinfo").textContent = !S.allowed && !S.owner ? "Press Take control first." : a.tx_why ? "Receive only here: " + a.tx_why + "." : !S.audio ? "No audio client connected: start “Start FT-897 Voice” on this computer." :
+  { const au = S.audio, me = !!(au && au.ip === S.you), cl = S.client;
+    $("vcstart").hidden = !!au; $("vcstop").hidden = !(au && (me || a.role === "admin") && cl && cl.voice && cl.client >= "2026.11.26c");
+    $("vcstop").textContent = me ? "■ Stop voice client" : "■ Stop the voice client on " + au?.name?.split(" ")[0]; }
+  $("pttinfo").textContent = !S.allowed && !S.owner ? "Press Take control first." : a.tx_why ? "Receive only here: " + a.tx_why + "." : cwOn() ? "CW keyer: Space (or holding this button) is a straight key; ← → work as set under CW. Sending needs no voice client; listening does." : !S.audio ? "No audio client connected: start “Start FT-897 Voice” on this computer." :
     "Audio: " + S.audio.name + ". Hold the button or Space to talk; un-keys after " + S.tx_timeout + " s.";
   // connections
   const rows = [];
@@ -607,7 +814,7 @@ function render() {
 async function poll() {
   try {
     const r = await fetch("/api/state", { headers: headers(), cache: "no-store" });
-    S = await r.json(); lastOk = Date.now(); render();
+    S = await r.json(); lastOk = Date.now(); render(); wlRender();
   } catch (e) { }
   try { renderAudio(); repSync(); } catch (e) { console.error(e); }
   const age = (Date.now() - lastOk) / 1000;
@@ -621,13 +828,41 @@ async function poll() {
 function tab(t) { document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll(".pane").forEach(p => p.classList.toggle("show", p.id === "pane-" + t)); store("ft897.tab", t); }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => tab(b.dataset.tab));
-tab(["audio", "fav", "reps"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
+tab(["audio", "fav", "reps", "wl"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
+// ---------- Winlink on the Pi (xara + Pat)
+let wlSetAt = 0;
+const wlSet = o => { wlSetAt = Date.now(); post("/api/winlink", { op: "set", ...o }); };
+$("wlcall").onchange = () => wlSet({ call: $("wlcall").value.trim().toUpperCase() });
+$("wlloc").onchange = () => wlSet({ locator: $("wlloc").value.trim() });
+$("wlbw").onchange = () => wlSet({ bw: +$("wlbw").value });
+$("wldrive").oninput = () => { $("wldrivev").textContent = $("wldrive").value + " dBFS"; clearTimeout(wlSet.t); wlSet.t = setTimeout(() => wlSet({ drive: +$("wldrive").value }), 300); };
+$("wlgo").onclick = async () => {
+  if (S && S.audio && S.audio.ip !== "127.0.0.1") {
+    if (!confirm("The voice client on " + S.audio.name + " is connected. Stop it and start Winlink?")) return;
+    return post("/api/winlink", { op: "start", stop_voice: true });
+  }
+  post("/api/winlink", { op: "start" });
+};
+$("wlstop").onclick = () => post("/api/winlink", { op: "stop" });
+function wlRender() {
+  const w = S && S.winlink; if (!w) return;
+  const act = document.activeElement, fresh = Date.now() - wlSetAt > 1500;
+  if (fresh && act !== $("wlcall")) $("wlcall").value = w.call; if (fresh && act !== $("wlloc")) $("wlloc").value = w.locator;
+  if (fresh) { $("wlbw").value = String(w.bw); if (act !== $("wldrive")) { $("wldrive").value = w.drive; $("wldrivev").textContent = Math.round(w.drive) + " dBFS"; } }
+  const parts = Object.entries(w.alive || {}).map(([k, v]) => (v ? "● " : "○ ") + k).join("  ");
+  $("wlstat").textContent = w.missing ? "Not ready: " + w.missing : w.on ? `Winlink is running (${parts}), started by ${w.by || "?"} ${ago(w.since)} ago.` + (w.err ? " " + w.err : "") : "Winlink is off." + (w.err ? " Last time: " + w.err : "");
+  $("wlstat").style.color = w.missing || w.err ? "var(--warn)" : "";
+  $("wlgo").hidden = w.on; $("wlstop").hidden = !w.on; $("wlopen").hidden = !w.on;
+  $("wlopen").href = location.protocol + "//" + location.hostname + ":" + w.pat_port + "/";
+  for (const id of ["wlcall", "wlbw", "wldrive"]) $(id).disabled = w.on;
+  const lg = (w.log || []).join("\n"); if ($("wllog").textContent !== lg) { $("wllog").textContent = lg; $("wllog").scrollTop = 1e6; }
+}
 
 // ---------- audio settings: they live in the voice client on the computer with the headset; the bridge passes them on
 const A = { set: {}, at: {}, out: {}, timer: null, last: 0 };
 const dB = v => (v > 0 ? "+" : "") + Math.round(v) + " dB", hz = v => Math.round(v) + " Hz";
 const RXS = [["volume", "Volume", -40, 20, 1, dB], ["nr", "Noise reduction", 0, 24, 1, v => v ? Math.round(v) + " dB" : "off"], ["low", "Low cut", 50, 1500, 10, hz],
-  ["high", "High cut", 600, 3400, 10, hz], ["shift", "Shift", -1000, 1000, 10, v => v ? (v > 0 ? "+" : "") + Math.round(v) + " Hz" : "0"], ["bass", "Bass", -12, 12, 1, dB], ["treble", "Treble", -12, 12, 1, dB], ["fmsq", "FM squelch", 0, 30, 1, v => v ? Math.round(v) : "off"], ["notch_f", "Notch at", 100, 3300, 5, hz], ["notch_w", "Notch width", 20, 400, 10, hz]];
+  ["high", "High cut", 600, 3400, 10, hz], ["shift", "Shift", -1000, 1000, 10, v => v ? (v > 0 ? "+" : "") + Math.round(v) + " Hz" : "0"], ["bass", "Bass", -12, 12, 1, dB], ["treble", "Treble", -12, 12, 1, dB], ["fmsq", "FM squelch", 0, 30, 1, v => v ? Math.round(v) : "off"], ["notch_f", "Notch at", 100, 3300, 5, hz], ["notch_w", "Notch width", 20, 400, 10, hz], ["notch2_f", "Notch 2 at", 100, 3300, 5, hz], ["notch2_w", "Notch 2 width", 20, 400, 10, hz]];
 const TXS = [["drive", "Drive (ALC)", -20, -1, 1, v => Math.round(v) + " dBFS"], ["mic", "Mic gain", -20, 20, 1, dB], ["comp", "Compression", 0, 14, 1, dB],
   ["presence", "Clarity", 0, 12, 1, dB], ["txlow", "Low cut", 80, 500, 10, hz], ["txhigh", "High cut", 2000, 3200, 50, hz]];
 const PRE = [["SSB", 100, 2800], ["SSB mid", 250, 2600], ["SSB narrow", 350, 2200], ["CW 500", 450, 950], ["CW 250", 575, 825], ["FM", 250, 3400], ["AM", 100, 3400]];
@@ -643,9 +878,10 @@ for (const [box, list] of [["rxsl", RXS], ["txsl", TXS]]) for (const [k, label, 
     if (k === "low" && +i.value > (A.set.high || 2800) - 150) o.high = Math.min(3400, +i.value + 150); if (k === "high" && +i.value < (A.set.low || 100) + 150) o.low = Math.max(50, +i.value - 150); aset(o); };
   i.ondblclick = () => aset({ [k]: ADEF[k] }); i.title = "double-click: default"; $(box).appendChild(d); SL[k] = { d, i, v: d.querySelector(".v"), fmt };
 }
-const ADEF = { fmsq: 0, volume: -12, nr: 8, low: 100, high: 2800, shift: 0, bass: 0, treble: 0, notch_f: 1000, notch_w: 100, drive: -5, mic: 0, comp: 8, presence: 6, txlow: 300, txhigh: 2800 };
+for (const k of ["shift", "nr"]) $("fsl").appendChild(SL[k].d);         // the two used most sit in the Filter column
+const ADEF = { fmsq: 0, volume: -12, nr: 8, low: 100, high: 2800, shift: 0, bass: 0, treble: 0, notch_f: 1000, notch_w: 100, notch2_f: 1500, notch2_w: 100, drive: -5, mic: 0, comp: 8, presence: 6, txlow: 300, txhigh: 2800 };
 for (const [n, lo, hi] of PRE) { const b = document.createElement("button"); b.textContent = n; b.dataset.lo = lo; b.dataset.hi = hi; b.onclick = () => aset({ low: lo, high: hi, shift: 0 }); $("presets").appendChild(b); }
-for (const k of ["anotch", "notch", "squelch", "tick", "sharp"]) $(k).onchange = () => aset({ [k]: $(k).checked });
+for (const k of ["anotch", "notch", "notch2", "squelch", "tick", "sharp"]) $(k).onchange = () => aset({ [k]: $(k).checked });
 $("agc").onchange = () => aset({ agc: $("agc").value });
 $("nrkind").onchange = () => aset({ neural: $("nrkind").value === "neural" });
 $("qvol").oninput = () => aset({ volume: +$("qvol").value }); $("qmute").onclick = () => aset({ mute: !A.set.mute });
@@ -688,7 +924,9 @@ function paintAudio() {
   const s = A.set; if (s.volume === undefined) return;
   for (const k in SL) { const x = SL[k]; if (s[k] === undefined) continue; if (document.activeElement !== x.i || Date.now() - (A.at[k] || 0) > 1500) x.i.value = s[k]; x.v.textContent = x.fmt(s[k]); }
   SL.notch_f.d.style.display = SL.notch_w.d.style.display = s.notch ? "" : "none";
-  for (const k of ["anotch", "notch", "squelch"]) $(k).checked = !!s[k];
+  SL.notch2_f.d.style.display = SL.notch2_w.d.style.display = s.notch2 ? "" : "none";
+  for (const k of ["anotch", "notch", "notch2", "squelch"]) $(k).checked = !!s[k];
+  $("notch2").parentNode.classList.toggle("hid", s.notch2 === undefined);           // an older voice client has one notch
   $("tick").checked = s.tick !== false; $("tick").disabled = s.tick === undefined;
   $("sharp").checked = s.sharp !== false; $("sharp").disabled = s.sharp === undefined;
   if (document.activeElement !== $("agc")) $("agc").value = s.agc;
@@ -701,7 +939,7 @@ function paintAudio() {
 }
 function renderAudio() {
   const c = S && S.client, v = !!(c && c.voice && c.set);
-  $("audctl").classList.toggle("offline", !v); $("qvol").disabled = $("qmute").disabled = !v || !S.allowed; $("wfL").hidden = $("wfR").hidden = !v;
+  $("audctl").classList.toggle("offline", !v); $("fcol").classList.toggle("offline", !v); $("qvol").disabled = $("qmute").disabled = !v || !S.allowed; $("wfL").hidden = $("wfR").hidden = !v;
   if (v) for (const k in c.set) if (Date.now() - (A.at[k] || 0) > 1200) A.set[k] = c.set[k];
   tonePaint(); if (v) { paintAudio(); preAuto(); prePaint(); }
   $("qpre").disabled = !v || !S.allowed;
@@ -716,7 +954,7 @@ function renderAudio() {
   $("anl").textContent = v && c.notches && c.notches.length ? "notching " + c.notches.join(", ") + " Hz" : ""; SL.fmsq.d.style.display = v && c.set.fmsq !== undefined ? "" : "none";
   SL.fmsq.v.textContent = v && c.set.fmsq ? A.set.fmsq + (c.fm_open ? " open" : " closed") : "off"; SL.fmsq.d.title = v && c.fm_lvl !== undefined ? `noise now ${Math.round(c.fm_lvl)} dBFS; opens below ${-46 - (A.set.fmsq || 0)}` : "";
   $("sql").textContent = v && c.set.squelch ? (c.sq_open ? "open" : "closed") : "";
-  const want = v ? [...(A.set.notch ? [A.set.notch_f] : []), ...(c.notches || [])] : [], box = $("wfnotches");
+  const want = v ? [...(A.set.notch ? [A.set.notch_f] : []), ...(A.set.notch2 ? [A.set.notch2_f] : []), ...(c.notches || [])] : [], box = $("wfnotches");
   while (box.children.length < want.length) { const e = document.createElement("div"); e.className = "wfnotch"; box.appendChild(e); }
   while (box.children.length > want.length) box.lastChild.remove();
   want.forEach((f, i) => box.children[i].style.left = f / WF.fmax * 100 + "%");
@@ -735,7 +973,7 @@ const RXP = {
   "CW: wide": { nr: 5, low: 450, high: 950 },
   "CW: narrow": { nr: 5, low: 575, high: 825 },
   "No processing": { nr: 0, low: 50, high: 3400 } };
-const RXBASE = { nr: 0, low: 100, high: 2800, shift: 0, anotch: false, notch: false, agc: "off", bass: 0, treble: 0, squelch: false, fmsq: 0 };
+const RXBASE = { nr: 0, low: 100, high: 2800, shift: 0, anotch: false, notch: false, notch2: false, agc: "off", bass: 0, treble: 0, squelch: false, fmsq: 0 };
 const TXP = {
   "SSB: everyday": { comp: 8, presence: 6, txlow: 300, txhigh: 2800 },
   "SSB: DX punch": { comp: 12, presence: 9, txlow: 350, txhigh: 2700 },
@@ -743,7 +981,7 @@ const TXP = {
   "FM: AllStar style": { comp: 2, presence: 0, txlow: 300, txhigh: 3000 },     // clean, flat; 300 Hz keeps voice off the CTCSS tone
   "FM: louder": { comp: 6, presence: 4, txlow: 300, txhigh: 3000 } };
 const TXBASE = { comp: 8, presence: 6, txlow: 300, txhigh: 2800 };
-const MODEPRE = { FM: "FM: strong repeater", WFM: "FM: strong repeater", USB: "SSB: everyday", LSB: "SSB: everyday", PKTUSB: "SSB: everyday", PKTLSB: "SSB: everyday", DLSB: "SSB: everyday", FMN: "FM: strong repeater", AM: "AM", CW: "CW: wide", CWR: "CW: wide" };
+const MODEPRE = { FM: "FM: strong repeater", WFM: "FM: strong repeater", USB: "SSB: everyday", LSB: "SSB: everyday", PKTUSB: "SSB: everyday", PKTLSB: "SSB: everyday", DLSB: "SSB: everyday", FMN: "FM: strong repeater", AM: "AM", CW: "CW: wide", CWR: "CW: wide", DCW: "CW: wide" };
 const modeTX = m => isFM(m) ? "FM: AllStar style" : ["USB", "LSB", "PKTUSB", "PKTLSB", "DLSB"].includes(m) ? "SSB: everyday" : null;
 const own = k => { try { const o = JSON.parse(store("ft897.pre." + k) || "{}"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; } };
 const preAll = k => k === "rx" ? { ...RXP, ...own("rx") } : { ...TXP, ...own("tx") };
@@ -756,7 +994,7 @@ function preLists() {
     sel.onchange = () => { if (sel.value) preApply(k, sel.value); sel.blur(); };
   }
 }
-const same = (p, s) => Object.keys(p).every(q => q === "notch_f" || q === "notch_w" ? !p.notch || p[q] === s[q] : p[q] === s[q]);
+const same = (p, s) => Object.keys(p).every(q => q === "notch_f" || q === "notch_w" ? !p.notch || p[q] === s[q] : q === "notch2_f" || q === "notch2_w" ? !p.notch2 || p[q] === s[q] : q === "notch2" ? !!s[q] === !!p[q] : p[q] === s[q]);
 function prePaint() {                                    // which preset matches the settings now ("Custom" if none does)
   for (const [k, sels] of [["rx", document.querySelectorAll(".rxpre")], ["tx", [$("txpre")]]]) {
     const names = [...Object.keys(own(k)).reverse(), ...Object.keys(k === "rx" ? RXP : TXP)], n = names.find(x => same(preFull(k, x), A.set)) || "";
@@ -767,7 +1005,7 @@ document.querySelectorAll("[data-save]").forEach(b => b.onclick = () => {
   if (A.set.nr === undefined) return msg("start the voice client first");
   const k = b.dataset.save, n = (prompt("Name for this " + (k === "rx" ? "receive" : "transmit") + " preset:") || "").trim().slice(0, 30); if (!n) return;
   if ((k === "rx" ? RXP : TXP)[n]) return alert("That is the name of a built-in preset. Please choose another.");
-  const o = own(k), p = {}; for (const q of Object.keys(k === "rx" ? RXBASE : TXBASE)) p[q] = A.set[q]; if (k === "rx" && p.notch) { p.notch_f = A.set.notch_f; p.notch_w = A.set.notch_w; }
+  const o = own(k), p = {}; for (const q of Object.keys(k === "rx" ? RXBASE : TXBASE)) p[q] = A.set[q]; if (k === "rx" && p.notch) { p.notch_f = A.set.notch_f; p.notch_w = A.set.notch_w; } if (k === "rx" && p.notch2) { p.notch2_f = A.set.notch2_f; p.notch2_w = A.set.notch2_w; }
   o[n] = p; store("ft897.pre." + k, JSON.stringify(o)); preLists(); prePaint();
 });
 $("predel").onclick = () => { const all = [...Object.keys(own("rx")).map(n => ["rx", n]), ...Object.keys(own("tx")).map(n => ["tx", n])];
@@ -786,24 +1024,27 @@ function edges(s) {                                     // the passband actually
   const w = Math.max(150, s.high - s.low), lo = Math.min(Math.max(50, s.low + (s.shift || 0)), 3400 - w); return [lo, Math.min(3400, lo + w)]; }
 function wfAt(e) { const r = $("wfbox").getBoundingClientRect(); return { x: e.clientX - r.left, f: Math.max(0, Math.min(WF.fmax, (e.clientX - r.left) / r.width * WF.fmax)), w: r.width }; }
 function wfNear(p) { if (!S || !S.client || !S.client.set) return null; const s = A.set, d = f => Math.abs(f / WF.fmax * p.w - p.x);
-  const [elo, ehi] = edges(s), c = [["low", d(elo)], ["high", d(ehi)], ...(s.notch ? [["notch_f", d(s.notch_f)]] : [])].sort((a, b) => a[1] - b[1])[0]; return c[1] < 7 ? c[0] : null; }
+  const [elo, ehi] = edges(s), c = [["low", d(elo)], ["high", d(ehi)], ...(s.notch ? [["notch_f", d(s.notch_f)]] : []), ...(s.notch2 ? [["notch2_f", d(s.notch2_f)]] : [])].sort((a, b) => a[1] - b[1])[0]; return c[1] < 7 ? c[0] : null; }
 function wfDrag(e) {
   const p = wfAt(e);
   if (drag && !(e.buttons & 1)) drag = null;               // the button was let go somewhere we didn't see it
   if (drag && !drag.on) { if (Math.abs(p.x - drag.x) < 5) return true; drag.on = true;       // a click near a line is not a drag
-    if (A.set.shift && drag.k !== "notch_f") { const [elo, ehi] = edges(A.set); aset({ low: elo, high: ehi, shift: 0 }); } }   // dragging an edge takes the shift into the cuts
+    if (A.set.shift && drag.k !== "notch_f" && drag.k !== "notch2_f") { const [elo, ehi] = edges(A.set); aset({ low: elo, high: ehi, shift: 0 }); } }   // dragging an edge takes the shift into the cuts
   if (!drag) { $("wf").style.cursor = wfNear(p) ? "ew-resize" : "crosshair"; return false; }
   const f = Math.round(p.f / 10) * 10, s = A.set;
   if (drag.k === "low") aset({ low: Math.max(50, Math.min(f, s.high - 400)) });
   else if (drag.k === "high") aset({ high: Math.min(3400, Math.max(f, s.low + 400)) });
-  else aset({ notch_f: Math.max(100, Math.min(3300, f)) });
+  else aset({ [drag.k]: Math.max(100, Math.min(3300, f)) });
   return true;
 }
 $("wfbox").addEventListener("pointerdown", e => { const p0 = wfAt(e), k = e.button === 0 ? wfNear(p0) : null; drag = k ? { k, x: p0.x, on: false } : null; if (drag) { e.preventDefault(); $("wfbox").setPointerCapture(e.pointerId); } });
 ["pointerup", "pointercancel", "lostpointercapture"].forEach(n => $("wfbox").addEventListener(n, () => { drag = null; }));
 window.addEventListener("blur", () => { drag = null; });
-$("wfreset").onclick = () => { const p = preFull("rx", $("rxpre").value) || preFull("rx", MODEPRE[S && S.rig.mode] || "SSB: everyday") || RXBASE; aset({ low: p.low, high: p.high, shift: 0, notch: false }); };
-$("wfbox").addEventListener("dblclick", e => { if (S && S.client && S.client.set) aset({ notch: true, notch_f: Math.max(100, Math.min(3300, Math.round(wfAt(e).f / 5) * 5)) }); });
+$("wfreset").onclick = () => { const p = preFull("rx", $("rxpre").value) || preFull("rx", MODEPRE[S && S.rig.mode] || "SSB: everyday") || RXBASE; aset({ low: p.low, high: p.high, shift: 0, notch: false, ...(A.set.notch2 !== undefined ? { notch2: false } : {}) }); };
+$("wfbox").addEventListener("dblclick", e => { if (!(S && S.client && S.client.set)) return;   // the first free notch, else the nearer one moves
+  const f = Math.max(100, Math.min(3300, Math.round(wfAt(e).f / 5) * 5)), s = A.set, two = s.notch2 !== undefined;
+  const k = !s.notch || !two ? "notch" : !s.notch2 ? "notch2" : Math.abs(s.notch_f - f) <= Math.abs(s.notch2_f - f) ? "notch" : "notch2";
+  aset({ [k]: true, [k + "_f"]: f }); });
 
 // ---------- repeaters
 let REP = [], repV = -1, repBusy = false, editId = null;
@@ -842,7 +1083,7 @@ $("rbody").onclick = e => { const b = e.target.closest("[data-act]"); if (!b) re
   if (b.dataset.act === "tune") tuneRep(x); else if (b.dataset.act === "fav") repPost({ op: "fav", id: x.id, on: !x.fav }); else repEdit(x); };
 $("rclear").onclick = () => { if (confirm("Remove every imported repeater that is not a favorite?")) repPost({ op: "clear" }); };
 $("xt").innerHTML = '<option value="0">None</option>' + TONES.map(t => `<option value="${t}">${t.toFixed(1)}</option>`).join("");
-const AUDK = { rx: Object.keys(RXBASE).concat("notch_f", "notch_w"), tx: Object.keys(TXBASE) };
+const AUDK = { rx: Object.keys(RXBASE).concat("notch_f", "notch_w", "notch2_f", "notch2_w"), tx: Object.keys(TXBASE) };
 let editAud = null;
 function xAud(x) {                                       // audio choices: none, what was saved, the settings now, or a preset
   editAud = x.aud || null;
@@ -856,7 +1097,7 @@ function xAudRead() {
     if (v === "=") { for (const q of AUDK[k]) if (q in editAud.set) p[q] = editAud.set[q]; out[k] = editAud[k]; }
     else if (v === "*") { for (const q of AUDK[k]) if (A.set[q] !== undefined) p[q] = A.set[q]; out[k] = Object.keys(preAll(k)).find(n => same(preFull(k, n), A.set)) || "own settings"; }
     else { p = preFull(k, v.slice(1)) || {}; out[k] = v.slice(1); }
-    if (k === "rx" && !p.notch) { delete p.notch_f; delete p.notch_w; }
+    if (k === "rx" && !p.notch) { delete p.notch_f; delete p.notch_w; } if (k === "rx" && !p.notch2) { delete p.notch2_f; delete p.notch2_w; }
     Object.assign(out.set, p); }
   return Object.keys(out.set).length ? out : null;
 }
@@ -1009,9 +1250,9 @@ for (let f = 0; f <= 3000; f += 500) { const e = document.createElement("span");
 $("wfbox").addEventListener("pointermove", e => {
   if (wfDrag(e)) return;
   const r = $("wfbox").getBoundingClientRect(), x = e.clientX - r.left; if (x < 0 || x > r.width) return;
-  const f = x / r.width * WF.fmax, m = S && S.rig.mode, sb = m === "LSB" || m === "DLSB" || m === "PKTLSB" ? -1 : m === "USB" || m === "PKTUSB" ? 1 : 0;
+  const f = x / r.width * WF.fmax, m = S && S.rig.mode, sb = m === "LSB" || m === "DLSB" || m === "PKTLSB" ? -1 : m === "USB" || m === "PKTUSB" || m === "DCW" ? 1 : 0;
   $("wfcur").style.display = "block"; $("wfcur").style.left = x + "px";
-  $("wfread").textContent = Math.round(f) + " Hz" + (sb && S.rig.freq ? "  =  " + ((S.rig.freq + sb * f) / 1e6).toFixed(5) + " MHz" : "");
+  $("wfread").textContent = Math.round(f) + " Hz" + (sb && S.rig.freq ? "  =  " + ((S.rig.freq + sb * f - (m === "DCW" && S.cw ? S.cw.pitch : 0)) / 1e6).toFixed(5) + " MHz" : "");
 });
 $("wfbox").addEventListener("pointerleave", () => { $("wfcur").style.display = "none"; $("wfread").textContent = ""; });
 async function wfRun(gen) {

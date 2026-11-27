@@ -14,7 +14,7 @@ import argparse, array, atexit, collections, json, math, os, queue, socket, stru
 import pyaudio
 from ft897_dsp import DEFAULTS, NeuralNR, RxDsp, Speech, clean
 
-VERSION = "2026.11.26"
+VERSION = "2026.11.26c"
 if sys.platform == "darwin": DEF_PLAY, DEF_REC = "BlackHole 2ch", "BlackHole 2ch"
 elif sys.platform == "win32": DEF_PLAY, DEF_REC = "CABLE Input", "CABLE Output"
 else: DEF_PLAY, DEF_REC = "", ""
@@ -196,6 +196,12 @@ def control(d):
         else: st["tone"] = None
         send_status()
     if j.get("act") == "reset": change(dict(DEFAULTS)); log("audio settings reset")
+    if j.get("act") == "quit":                         # the panel's "Stop voice client" button
+        if st["keyed"]: log("stop from the web panel: not while transmitting")
+        else:
+            log("stopped from the web panel")
+            try: recorder.close(); save_settings() if save_at[0] else None
+            finally: os._exit(0)                       # (the main thread may be waiting on the network)
 
 class Recorder:
     """r key: saves the last 30 s and everything from then on (until r again, or 10 minutes) as two 48 kHz WAV files:

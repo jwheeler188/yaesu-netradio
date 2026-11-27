@@ -19,7 +19,8 @@ TX_AUDIO = ("drive", "mic", "comp", "presence", "txlow", "txhigh")
 DEFAULT = {"tx": True, "inside": True, "bands": [{"name": n, "lo": lo, "hi": hi, "tx": True, "note": ""} for n, lo, hi in BANDS],
            "blocks": [], "swr": {"on": True, "flag": True, "level": 4, "reads": 3, "reset": "anyone"},
            "tx_timeout": 300, "need_control": False, "answer_s": 30, "no_answer": "grant", "owner_timeout": 120,
-           "max_drive": -1, "mic": None, "spk": None, "locks": {k: False for k in LOCKS}, "hosts": []}
+           "max_drive": -1, "mic": None, "spk": None, "locks": {k: False for k in LOCKS}, "hosts": [],
+           "modes": {}, "hide_locked": False}            # modes: mode -> reason, for the modes locked for transmitting
 
 def num(v, lo, hi, d):
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v: return d
@@ -31,7 +32,7 @@ def clean(j, old=None):
     """Valid settings only: anything missing or wrong keeps its old value."""
     c = json.loads(json.dumps(old or DEFAULT))
     if not isinstance(j, dict): return c
-    for k in ("tx", "inside", "need_control"):
+    for k in ("tx", "inside", "need_control", "hide_locked"):
         if isinstance(j.get(k), bool): c[k] = j[k]
     c["tx_timeout"] = num(j.get("tx_timeout"), 10, 600, c["tx_timeout"])
     c["answer_s"] = num(j.get("answer_s"), 10, 300, c["answer_s"])
@@ -60,6 +61,8 @@ def clean(j, old=None):
         if out: c["bands"] = out
     if isinstance(j.get("blocks"), list) and len(j["blocks"]) <= 100:
         c["blocks"] = [{"lo": rng(x)[0], "hi": rng(x)[1], "note": text(x.get("note"), 80)} for x in j["blocks"] if isinstance(x, dict) and rng(x)]
+    if isinstance(j.get("modes"), dict) and len(j["modes"]) <= 20:
+        c["modes"] = {k: text(v, 80) for k, v in j["modes"].items() if isinstance(k, str) and k.isalnum() and len(k) <= 8}
     if isinstance(j.get("hosts"), list): c["hosts"] = [text(h, 100).lower() for h in j["hosts"] if text(h, 100)][:20]
     return c
 
@@ -109,6 +112,13 @@ def reason(hz):
         t = trips.get(band_key(hz))
         if t: return f"high SWR on {band_key(hz)} ({t['why']}): check the antenna, then press Reset"
     return ""
+
+MODE_NAME = {"PKTUSB": "DIG", "PKTLSB": "DIG (LSB)", "DLSB": "LSB voice", "DCW": "CW keyer", "FMN": "FM narrow"}
+def mode_reason(mode):
+    """Why transmitting in this mode is not allowed; "" = it is (or the mode is not known)."""
+    with lock:
+        if not mode or mode not in cfg["modes"]: return ""
+        n = cfg["modes"][mode]; return f"{MODE_NAME.get(mode, mode)} is locked for transmitting" + (f": {n}" if n else "")
 
 def locked_bands():
     with lock: return {b["name"]: b["note"] or "locked" for b in cfg["bands"] if not b["tx"] or not cfg["tx"]}

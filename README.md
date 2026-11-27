@@ -71,7 +71,7 @@ Open **http://192.168.1.50:8080** (your Pi's address) in any browser: Mac, Windo
   and mode in this browser.
 - **Other controls:** mode, VFO A/B, Split, dial Lock, and RIT. RIT can be set but not read back: the 897 can't
   report it. In FM you also get repeater shift, offset, CTCSS tone, and Tone/TSQL.
-- **Meters:** the S-meter shows while receiving (tick "Live S-meter" while an audio client is connected). Power, ALC and SWR show while transmitting, from the panel or
+- **Meters:** the S-meter shows while receiving (click it, or tick "Live S-meter" in the Options tab, while an audio client is connected). Power, ALC and SWR show while transmitting, from the panel or
   from WSJT-X. The 897 reports them in 16 steps (SWR as meter steps, not a ratio). The bridge reads them with CAT
   command 0xBD, because Hamlib 4.5.5 returns the power as "ALC" and only a high-SWR flag as "SWR".
 - **Waterfall:** the audio passband (0-3.4 kHz, not the whole band: the 897 has no wide-band output), newest at the
@@ -98,7 +98,9 @@ Open **http://192.168.1.50:8080** (your Pi's address) in any browser: Mac, Windo
 **Voice:**
 1. Pick your headset as the computer's sound output and input. On the Mac that's System Settings › Sound.
 2. Double-click **macOS/Start FT-897 Voice.command** or **windows/Start FT-897 Voice.bat**. It starts the audio
-   client with that headset and opens the panel.
+   client with that headset and opens the panel. After a one-time setup (`macOS/install-link.sh`, run by install.sh, or
+   `windows/install-link.bat`), the panel's **Start voice client** / **Stop voice client** buttons do the same from the
+   page. Closing the browser doesn't stop the voice client.
 3. Use **DIG** for USB and **LSB voice** for LSB (menu 038 DIG MODE = USER-U). The 897 only takes audio from the rear DATA jack in
    DIG and PKT modes, not in plain USB/LSB. **LSB voice** is real LSB on the air: the radio stays in DIG with its dial 3 kHz below the
    carrier, and the Pi turns the audio spectrum over (f becomes 3000 - f) both ways, so waterfall, voice tuning and scanning work as on LSB.
@@ -106,7 +108,7 @@ Open **http://192.168.1.50:8080** (your Pi's address) in any browser: Mac, Windo
    ends it; not with split or VFO A/B. Transmit locks check the carrier and the 2.8 kHz below it. Measured: tones exact, images 60 dB down, 99.96 % of
    the signal inside the LSB channel, same drive as USB within 0.5 dB (simulated radio filter).
 4. **Audio & filters tab** (settings live in the voice client and are remembered there): volume, mute, noise reduction
-   (0-24 dB), passband (also by dragging its edges in the waterfall) with sharp edges (47 dB down 100 Hz outside) and a Shift control, auto notch, manual notch (double-click the
+   (0-24 dB), passband (also by dragging its edges in the waterfall) with sharp edges (47 dB down 100 Hz outside) and a Shift control, auto notch, two manual notches (double-click the
    waterfall), levelling, bass/treble, voice squelch; for transmit: drive, mic gain, compression, clarity, low/high cut.
    Measured: noise reduction 8 dB is free of artefacts, 13 dB slightly and 20 dB clearly "tinkles"; auto notch takes
    62 dB off a tone. There is no noise blanker here: the radio's filter has smeared the pulses by then, so use its NB.
@@ -134,6 +136,17 @@ Open **http://192.168.1.50:8080** (your Pi's address) in any browser: Mac, Windo
    On a Mac the client follows the sound settings: choose another output or input and it switches over by itself.
 8. FM works through the Digirig too (2 m repeater contact, 2026-11-23).
 9. Close the FT8 audio client first: voice and FT8 use different audio devices, so only one runs at a time.
+
+**CW keyer** (mode button): send CW from the keyboard. The radio stays in DIG with its dial a pitch (700 Hz) below the carrier
+and the Pi plays a keyed tone with 5 ms raised-cosine edges, which on the air is a single keyed carrier: CW. Space (or the PTT button)
+is a straight key; ← → work as a bug (← dits, → dah) or iambic paddles. The panel times the keying on its own clock and the Pi replays it
+0.25 s later, so network jitter never changes a dit; sidetone plays in the browser at once. Type-ahead text with prosigns and
+editable buttons (CQ, RST, 73...), Farnsworth spacing, 5-50 WPM, hang time. The Pi decodes what it hears at the pitch and shows it,
+following a station's speed and up to ~150 Hz of offset. Sending needs no voice client. Tested by decoding what the Pi would send.
+
+**Winlink on the Pi** (optional, Winlink tab): xara (VARA HF-compatible modem) and Pat run on the Pi; open Pat's mailbox in the
+browser, connect to a gateway, Pat tunes the radio. xara reaches the radio through a loopback sound card and the bridge's own audio
+and CAT ports, so every lock and safety check applies. Setup: manual section 3.6.
 
 **Repeaters and favorites:** one click sets frequency, mode, shift, offset and CTCSS or DCS. The list is kept on the Pi
 (`pi/repeaters.json`), so every panel shows the same one. Import the CSV you export from your own RepeaterBook account

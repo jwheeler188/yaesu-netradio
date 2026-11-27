@@ -168,6 +168,28 @@ s,o=cat(A,["F 14250000","T 1"],close=False); t("CAT keyed",st(A)["keyed"]); s.se
 o=cat(A,["V VFOA","F 14250000","S 1 VFOB","I 21300000","T 1","T 0"],wait=.25); t("split: transmit VFO on a locked band refused","RPRT -9" in o[4],o)
 o=cat(A,["I 14300000","T 1","T 0","S 0 VFOA"],wait=.25); t("split: allowed","RPRT 0" in o[1],o)
 save(tx=False); t("master switch off",ptt(A,start=True)[0]==409); save(tx=True)
+# ---- 5b mode locks
+ad=req(A,"/api/admin",who="adm")[1]; t("admin page gets the radio's modes","CW" in ad["radio"]["modes"] and ad["cfg"]["modes"]=={} and ad["cfg"]["hide_locked"] is False,ad.get("radio"))
+save(modes={"CW":"no key","RTTY":"","bad key!":"x","TOOLONGMODE":"x"},hide_locked=True); cf2=req(A,"/api/admin",who="adm")[1]["cfg"]
+t("mode locks saved, nonsense dropped",cf2["modes"]=={"CW":"no key","RTTY":""} and cf2["hide_locked"] is True,cf2["modes"])
+tune(14250000); req(A,"/api/cmd",{"a":"mode","mode":"CW"}); time.sleep(1.2); a_=st(A)["access"]
+t("panel told: locked modes, hide, why",a_["modes"]=={"CW":"no key","RTTY":""} and a_["hide_locked"] is True and "CW is locked for transmitting: no key" in a_["tx_why"],a_.get("tx_why"))
+r=ptt(A,start=True); time.sleep(.15); t("panel PTT refused in a locked mode",r[0]==409 and not st(A)["keyed"],r); ptt(A,False)
+c=cat(A,["T 1","T 0"],wait=.25); t("CAT PTT refused in a locked mode","RPRT -9" in c[0],c)
+t("listening in a locked mode works",req(A,"/api/cmd",{"a":"mode","mode":"USB"})[0]==200); time.sleep(1.2); t("allowed mode: no reason",st(A)["access"]["tx_why"]=="",st(A)["access"]["tx_why"])
+h=Hold(A); time.sleep(.4); t("USB keys",st(A)["keyed"])
+t("panel can't switch to a locked mode while transmitting",req(A,"/api/cmd",{"a":"mode","mode":"CW"})[0]==409 and st(A)["keyed"])
+t("panel may switch to an allowed mode while transmitting",req(A,"/api/cmd",{"a":"mode","mode":"LSB"})[0]==200 and st(A)["keyed"])
+h.up(); time.sleep(.5)
+# (Hamlib's dummy rig ignores a mode change while transmitting, so the radio's own mode button can't be simulated here:
+# locking the mode in use while transmitting goes through the same check in the poller)
+req(A,"/api/cmd",{"a":"mode","mode":"USB"}); time.sleep(.8); h=Hold(A); time.sleep(.5); t("keyed in USB",st(A)["keyed"])
+save(modes={"CW":"no key","RTTY":"","USB":"test"}); time.sleep(2.5); x=st(A); t("mode in use locked while transmitting: un-keyed",not x["keyed"] and "USB is locked" in ((x["access"].get("safety") or {}).get("why","")),x["access"].get("safety")); h.up()
+save(modes={"CW":"no key","RTTY":""}); time.sleep(.3)
+req(A,"/api/cmd",{"a":"mode","mode":"USB"}); time.sleep(.8)
+s,o=cat(A,["M USB 0","T 1"],close=False); t("CAT keyed in USB",st(A)["keyed"]); s.sendall(b"M CW 0\n"); time.sleep(.4); t("CAT mode change to a locked mode refused while keyed",b"RPRT -9" in s.recv(99) and st(A)["keyed"]); s.sendall(b"T 0\n"); time.sleep(.6); s.close()
+h=Hold(A); time.sleep(.4); t("keys again after all that",st(A)["keyed"]); h.up(); time.sleep(.4)
+save(modes={},hide_locked=False); t("mode locks cleared",st(A)["access"]["modes"]=={})
 tune(14250000); time.sleep(.1); h=Hold(A); time.sleep(.5); save(tx=False); time.sleep(.5); t("master switch stops a transmission",not st(A)["keyed"]); h.up(); save(tx=True)
 save(tx_timeout=10); h=Hold(A); time.sleep(9.2); a1=st(A)["keyed"]; time.sleep(1.6); t("time limit un-keys and stays off",a1 and not st(A)["keyed"]); time.sleep(.5); t("held button doesn't re-key",not st(A)["keyed"]); h.up(); save(tx_timeout=300)
 # ---- 6 SWR

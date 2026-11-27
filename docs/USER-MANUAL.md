@@ -41,7 +41,7 @@ programs over the network, and voice from a web page with a headset.
 
 ## 1. What it does
 
-<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="640"><br><em>The web panel: waterfall, scan, frequency display, band and mode buttons, meters and PTT.</em></p>
+<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="720"><br><em>The web panel: waterfall and scan on top, the radio display with its meters and PTT, then Tune, Band, Mode and Filter side by side. (Taken on the simulated radio, with some bands and modes locked.)</em></p>
 
 The radio and Digirig stay at home, plugged into a Raspberry Pi. From any computer on your network or VPN you get:
 
@@ -108,7 +108,8 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
 ### 3.3 Mac
 
 1. Install [Homebrew](https://brew.sh), then BlackHole 2ch (`brew install --cask blackhole-2ch`), then restart.
-2. Run `macOS/install.sh` once.
+2. Run `macOS/install.sh` once. It also sets up the panel's **Start voice client** button (see 5.7); to set up only
+   that, run `macOS/install-link.sh`. Run it again if you move the folder.
 3. For WSJT-X and other data modes, double-click **macOS/Start FT-897 Audio.command**. For voice, double-click
    **macOS/Start FT-897 Voice.command**. The first start asks for the Pi's address and saves it in `server.txt`.
 4. macOS may refuse to open the files the first time: right-click › Open.
@@ -119,7 +120,9 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
 2. Install VB-Audio Virtual Cable (vb-audio.com/Cable) and restart.
 3. Double-click **windows/Start FT-897 Audio.bat** (data) or **windows/Start FT-897 Voice.bat** (voice). The first
    start installs PyAudio and asks for the Pi's address.
-4. Windows voice is untested, and neural noise reduction isn't available on Windows yet.
+4. For the panel's **Start voice client** button, double-click **windows/install-link.bat** once (for your Windows user
+   only; no administrator needed).
+5. Windows voice is untested (including install-link.bat), and neural noise reduction isn't available on Windows yet.
 
 ### 3.5 WSJT-X, VARA, Pat
 
@@ -127,6 +130,27 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
   **Data/Pkt**. Audio: Mac **BlackHole 2ch** in and out; Windows Input **CABLE Output**, Output **CABLE Input**.
 - VARA (via xara or similar): `--ptt rigctld:<Pi address>:4533`. Pat: rig address `<Pi address>:4533`.
 - Only one audio client runs at a time: the data client (WSJT-X) or the voice client.
+
+### 3.6 Winlink on the Pi (optional)
+
+Winlink email can run on the Pi itself, so no laptop software is needed: xara (a VARA HF-compatible modem, MIT
+licence) and [Pat](https://getpat.io) (the mail program). Once, on the Pi:
+
+1. `sudo apt install libasound2-dev build-essential pkg-config`, and Pat: better its own package from
+   [github.com/la5nta/pat/releases](https://github.com/la5nta/pat/releases) (`pat_<version>_linux_arm64.deb`, then
+   `sudo apt install ./pat_…deb`) than Ubuntu 24.04's `pat` 0.15.1, which has no settings page in its web screen (it came in
+   0.17). The bridge finds either (`pat`, or `pat-winlink` as Ubuntu names it).
+2. The loopback sound card, which joins xara and the bridge, at every boot:
+   `echo "options snd-aloop index=10 id=Loopback pcm_substreams=2" | sudo tee /etc/modprobe.d/snd-aloop.conf`,
+   `echo snd-aloop | sudo tee /etc/modules-load.d/snd-aloop.conf`, `sudo modprobe snd-aloop`. Index 10 keeps the other
+   sound cards' numbers.
+3. xara: Rust 1.85 or newer from [rustup.rs](https://rustup.rs) (no sudo), then in xara's source folder
+   `cargo build --release -p xara --no-default-features --features alsa` (about 3 minutes on a Pi 4) and
+   `install -m 755 target/release/xara ~/.local/bin/xara`. xara's original project closed in November
+   2026; build it from a copy of its source.
+4. Restart the bridge. The panel's **Winlink** tab says "Not ready: …" until all three are there.
+
+See [5.11](#511-winlink-email) for using it.
 
 ## 4. First-day setup and calibration
 
@@ -152,25 +176,39 @@ Do these once, at the radio if you can, into a **dummy load** or at low power.
 
 Open `http://<Pi address>:8080` in any browser: Mac, Windows, phone.
 
+The page runs top to bottom in the order you use it: the **waterfall**, then **Scan** and **Tune in voice**, then the
+**radio display** (frequency, mode, thin meters and the PTT button), then one row with **Tune · Band · Mode ·
+Filter** side by side, so changing band, mode or filter needs no scrolling. On a computer the radio display stays
+pinned to the top of the window when you scroll down to the tabs (Audio & filters, Favorites, Repeaters, Options,
+Connected). On a narrow window the columns stack.
+
 ### 5.1 Top bar
 
 - **Take control / Release.** This gives your computer the radio. If someone else has it, they're asked to hand it
   over. With no answer in 30 s you get it (configurable). The administrator can take over at once, which ends their
   transmission. Control is released after 2 minutes without contact.
-- **Shared** lists who is connected. **Admin** opens the administration page.
+- **Shared** shows who has control. The **Connected** tab lists every computer connected. **Admin** opens the
+  administration page.
 
 ### 5.2 Frequency, mode, VFO
 
 - **Frequency:** scroll a digit or click its upper or lower half. ← → tune by the chosen step. You can also type a
   frequency (14.250 = MHz) and press Set. Each band button remembers your last frequency and mode in that browser.
+- **Bands and modes you may transmit on come first.** Receive-only ones (locked on the administration page, with a
+  padlock) follow after a "Receive only" line. The **Options** tab can hide them on your computer, and the
+  administrator can hide them for everyone. The band and mode you are on always stay visible.
+
+<p align="center"><img src="../screenshots/11-receive-only-bands-modes.png" alt="Receive-only bands and modes" width="720"><br><em>Bands and modes you may transmit on first; the locked ones, with a padlock, after "Receive only". The Filter column is on the right.</em></p>
+
 - **Modes:** LSB, USB, CW, CWR, AM, FM, WFM, RTTY, DIG, and **LSB voice**. For voice through the Digirig use **DIG**
   for USB and **LSB voice** for LSB. In plain LSB/USB the FT-897 ignores the Digirig's audio. "Voice through the
-  Digirig" makes the band buttons pick these for you.
+  Digirig" (Options tab) makes the band buttons pick these for you.
 - **LSB voice:** the radio stays in DIG with its dial 3 kHz below the carrier, and the Pi flips the audio. It is
   real LSB on the air. The panel shows the true LSB frequency, and the radio's own display shows 3 kHz less. It needs
   the voice client, and doesn't work with split or VFO A/B.
-- **VFO A/B, Split, Lock, RIT.** RIT can be set but not read back (the 897 can't report it).
-- **FM:** repeater shift, offset, CTCSS tone, Tone/TSQL, DCS/DSQL, and **Simplex** (turns shift and tones off). The
+- **VFO A/B, Split, Lock** are under Tune. **RIT** shows below the deck in SSB, CW and DIG; it can be set but not
+  read back (the 897 can't report it).
+- **FM** (this row replaces RIT in FM): repeater shift, offset, CTCSS tone, Tone/TSQL, DCS/DSQL, and **Simplex** (turns shift and tones off). The
   897 can't report these either, so the panel shows what was last set over CAT, and "?" until something sets them.
   The transmit frequency is shown in amber, or red when it would be out of band or locked.
 
@@ -178,16 +216,21 @@ Open `http://<Pi address>:8080` in any browser: Mac, Windows, phone.
 
 ### 5.3 Meters
 
+Thin bars inside the radio display.
+
 - **S-meter** while receiving. With an audio client connected it is off by default, because reading it puts faint
-  clicks into the audio. Tick **Live S-meter** to turn it on (the voice client removes most of the clicks).
-- **Power, ALC, SWR** while transmitting. The FT-897 reports them in 16 steps, not watts or a ratio. Power is
+  clicks into the audio. Click the S-meter (or tick **Live S-meter** in the Options tab) to turn it on; the voice
+  client removes most of the clicks.
+- **PO (power), ALC, SWR** while transmitting. The FT-897 reports them in 16 steps, not watts or a ratio. Power is
   relative to the power set on the radio.
 
 ### 5.4 Waterfall
 
 - It shows the receive audio from 0 to 3.4 kHz, newest line at the top. The FT-897 has no wide-band output, so this
   is not a band scope.
-- The **blue lines** are your passband: drag them. A **red line** is the manual notch: double-click to set it.
+- The **blue lines** are your passband: drag them. A **red line** is a notch. Double-click to set the first manual notch, double-click again
+  to set **Notch 2**; with both on, a double-click moves the nearer one. Drag a red line to move it. Dashed red lines
+  without a box are the auto notches.
 - Point at a signal to read its audio frequency and, in SSB/DIG, its RF frequency.
 - Speed, brightness and contrast are remembered. While you transmit it shows your transmit audio with a red edge.
 - Up to 6 viewers at once. It stops while the browser tab is hidden.
@@ -223,6 +266,16 @@ about 83% of clips at 10 dB above the noise and 56% at 0 dB, and about 1 in 60 o
 Hold the **PTT** button or the **Space bar**. Release to un-key. If the browser closes or the network drops, the Pi
 un-keys within about 1 s. After any safety un-key, a PTT that is still held does nothing: press it again.
 
+**Start / Stop voice client.** Under the radio display:
+
+- **▶ Start voice client** shows when no audio client is connected. It starts "Start FT-897 Voice" on the computer
+  you are using, in its own Terminal (Mac) or command window (Windows). The browser asks the first time whether to
+  allow it. It needs the one-time setup from section 3 (install-link); without it the button does nothing.
+- **■ Stop voice client** ends the voice client on this computer; its window stays open and says so. Only the
+  computer it runs on, or the administrator, can stop it, and not while transmitting.
+- Closing the browser does **not** stop the voice client: it keeps playing the radio until you stop it here, close
+  its window, or press Ctrl-C in it.
+
 ### 5.8 Repeaters and favorites
 
 - **Repeaters tab:** search, filter by band, add, edit, mark favorites. **Import** a CSV exported from your own
@@ -241,12 +294,54 @@ un-keys within about 1 s. After any safety un-key, a PTT that is still held does
   SSB/DIG a tone is full power: turn the power down or use a dummy load. Identify, and remember that linked
   repeaters carry it everywhere.
 
+### 5.10 CW keyer (send CW from the keyboard)
+
+The FT-897 can't send CW over its CAT cable, so the **CW keyer** mode button does it through DIG: the radio sits in DIG
+with its dial one pitch (700 Hz) below the carrier, and the Pi plays a keyed tone with soft edges. On the air that is a
+single carrier switched on and off: CW, as clean as from the KEY jack. The display shows the carrier, where you are on
+the air, and band locks check that. Sending needs no voice client; you need it to listen. The radio's own **CW** and
+**CWR** buttons stay for listening with its CW filter (they would need a key in the KEY jack to send).
+
+- **Keys:** **Space** (or holding the PTT button) is a straight key in every setting. **← →** work as a **bug** (hold
+  ← for a stream of dits, → for a dah as long as you hold it) or as **iambic paddles** (← dit, → dah; squeeze for
+  alternating). In CW keyer mode ↑ ↓ tune instead of ← →.
+- **Timing:** you hear the sidetone in this browser at once; the radio sends your exact timing 0.25 s later, so the
+  network can't change a dit. The radio stays keyed for the **Hang** time after your last element.
+- **Speed** 5–50 WPM, **Spacing** (Farnsworth: characters at full speed, slower overall), **Pitch** (400–1000 Hz; the
+  dial moves with it so the carrier stays put), **Level** (watch ALC, like the Drive slider), **Sidetone** on/off and
+  volume.
+- **Send box:** type and press Enter; keep typing while it sends. The grey text has gone out, the highlighted text is
+  waiting. Prosigns: `<AR>` `<SK>` `<BT>` `<KN>` `<AS>` `<BK>`. **Stop** or **Esc** stops at once. The buttons below
+  (CQ, QRZ, Call, RST, Name, 73…) send their text; **Edit…** changes them and sets your call sign. `{CALL}` is your
+  call sign, `{RST}` whatever is in the Send box (599 if empty).
+- **Received:** the Pi decodes what it hears at your pitch and shows the text, with the tone, the other station's speed
+  and the signal strength. **Follow the signal** moves to a station up to about 150 Hz off. It copies clean signals
+  well; weak, fading or crowded ones less so, like every decoder.
+- **Safety:** if the browser stops answering while a key is held, the key is let go after 1 s; a key held 15 s is let
+  go. The administrator can lock **CW keyer** under Modes. Another computer taking control clears your queue.
+
+### 5.11 Winlink email
+
+With [Winlink on the Pi](#36-winlink-on-the-pi-optional) installed, the **Winlink** tab has your call sign, grid,
+VARA bandwidth (500, 2300 or 2750) and **Drive** (start at −12 dBFS and check for no ALC, as with WSJT-X).
+
+1. **Start Winlink.** If the voice client is connected, the panel asks to stop it: there is one audio link at a time.
+   The radio goes to DIG.
+2. **Open the mailbox (Pat)** opens Pat's page on the Pi (port 8092). Write mail, then **Connect** → **VARA HF**, pick
+   a gateway from the list and connect: Pat tunes the radio and xara does the rest. Pat asks for your Winlink password
+   the first time; it stays in Pat's settings on the Pi.
+3. **Stop Winlink** when you are done.
+
+xara keys the radio through the bridge's CAT port, so every lock, the transmit time limit and the high-SWR shutdown
+apply. If another computer takes control, Winlink stops. The tab shows the last lines of xara's and Pat's logs. Pat's
+page has no password of its own: anyone who can open the panel can open it while Winlink runs.
+
 ## 6. Audio settings reference
 
 All audio settings live in the **voice client** on your laptop. They're remembered in `~/.ft897-audio.json` and
 changed from the panel's **Audio & filters** tab. Double-click a slider to put it back to its default.
 
-<p align="center"><img src="../screenshots/4-audio-controls.png" alt="Audio and filters tab" width="720"><br><em>The Audio & filters tab: receive on the left, transmit on the right. (Taken before the Noise method choice was added; it now sits below the sliders.)</em></p>
+<p align="center"><img src="../screenshots/4-audio-controls.png" alt="Audio and filters tab" width="720"><br><em>The Audio & filters tab: receive on the left, transmit on the right.. The Notch 2 sliders show while Notch 2 is ticked.</em></p>
 
 ### 6.1 Receive
 
@@ -262,7 +357,8 @@ changed from the panel's **Audio & filters** tab. Double-click a slider to put i
 | Bass / Treble | ±12 dB | 0 | Tone controls (500 Hz / 1.5 kHz shelves) |
 | Levelling | Off / Slow / Fast | Off | AGC. Fast suits nets with mixed signal levels |
 | Auto notch | on/off | off | Finds and removes whistles and carriers (−62 dB on a steady tone). Leave it off for CW |
-| Manual notch, Notch at, width | 100–3300 Hz, 20–400 Hz | off, 1000, 100 | Double-click the waterfall to place it |
+| Notch, Notch at, width | 100–3300 Hz, 20–400 Hz | off, 1000, 100 | Double-click the waterfall to place it |
+| Notch 2, Notch 2 at, width | 100–3300 Hz, 20–400 Hz | off, 1500, 100 | A second manual notch: a second double-click places it. With auto notch on you can have up to 6 notches at once (2 manual, 4 automatic) |
 | Remove CAT ticks | on/off | on | Repairs the clicks CAT data leaks into the audio; loud speech is left alone |
 | Voice squelch | on/off | off | Mutes when no voice is detected |
 | FM squelch | 0 (off) to 30 | 0 (presets: 8) | Mutes by the hiss above the voice. 8 is a good start; below 6 it stays open |
@@ -298,7 +394,9 @@ Record; and set the radio's DSP and noise blanker before you leave. A quieter an
 
 `http://<Pi address>:8080/admin`. Nothing changes until you press **Save** (**Undo** discards your changes).
 
-<p align="center"><img src="../screenshots/6-admin-bands.png" alt="Administration: transmitting and bands" width="600"><br><em>Transmitting, bands and locked ranges. In this example, bands the antenna can't handle are locked with a reason, and 14.000–14.025 MHz is locked as Extra-only.</em></p>
+<p align="center"><img src="../screenshots/6-admin-bands.png" alt="Administration: transmitting and bands" width="600"><br><em>Transmitting, bands and locked ranges (the Modes card, which sits between them, is shown next). In this example, bands the antenna can't handle are locked with a reason, and 14.000–14.025 MHz is locked as Extra-only.</em></p>
+
+<p align="center"><img src="../screenshots/10-admin-modes.png" alt="Administration: modes" width="600"><br><em>Modes. In this example plain LSB/USB are locked because the FT-897 only takes the Digirig's audio in DIG, CW because no key is connected, and RTTY in favour of DIG with a data program.</em></p>
 
 <p align="center"><img src="../screenshots/7-admin-high-swr.png" alt="Administration: high-SWR shutdown" width="600"><br><em>High-SWR shutdown with its default settings.</em></p>
 
@@ -312,6 +410,8 @@ Record; and set the radio's DSP and noise blanker before you leave. A quieter an
 | | Only inside the bands below | on | Untick it if you're licensed outside the amateur bands (MARS, CAP) |
 | | Longest transmission | 300 s | 10–600 s. Then the radio is un-keyed |
 | Bands | Transmit per band, From/To MHz, reason | US edges | A locked band can still be listened to. Applies to the panel, WSJT-X and all CAT programs. It can't stop the microphone or a key plugged into the radio |
+| Modes | Transmit per mode, reason | all allowed | A locked mode can still be listened to: the radio won't transmit in it from the panel, WSJT-X or other CAT programs. Switching into a locked mode while transmitting is refused, and changing to one on the radio itself un-keys it |
+| | Hide locked bands and modes on the panel | off | Their buttons disappear for everyone. A band locked by high SWR always stays visible |
 | Locked ranges | From/To MHz, reason | none | E.g. where your antenna isn't matched, or a local band-plan limit |
 | High-SWR shutdown | Shutdown on | on | The meters are read about 5 times a second while transmitting |
 | | Use the radio's own high-SWR warning | on | |
@@ -347,7 +447,10 @@ list.
 | `--cat-port` / `--audio-port` / `--web-port` | 4533 / 4534 / 8080 | Network ports (web 0 = off) |
 | `--bind` | 0.0.0.0 | Address to listen on |
 | `--stall` | 1.5 s | Un-key if the laptop's transmit audio stops this long |
-| `--no-audio-check` | off | Allow keying with no laptop audio link (e.g. CW keyer). Use with care |
+| `--no-audio-check` | off | Allow keying with no laptop audio link (e.g. an external CW keyer program). The panel's own CW keyer doesn't need it. Use with care |
+| `--xara` | ~/.local/bin/xara | xara, for Winlink on the Pi |
+| `--pat` | pat-winlink or pat | Pat, for Winlink on the Pi |
+| `--pat-port` | 8092 | Pat's mailbox page while Winlink runs |
 | `--dummy` | off | Test mode: no radio, no serial port, no sound card |
 | `-v` | | Log PTT, frequency changes and connections |
 

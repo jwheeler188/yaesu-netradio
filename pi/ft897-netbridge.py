@@ -22,18 +22,19 @@ and new ones from other computers are refused until that computer releases it (o
 Whoever is using the radio is asked first. The administration page (/admin) sets the passwords, the bands and ranges
 where transmitting is locked, and the high-SWR shutdown (ft897_access.py).
 """
-import argparse, array, datetime, fcntl, json, os, queue, re, signal, socket, struct, subprocess, sys, threading, time, glob
+import argparse, array, collections, datetime, shutil, fcntl, json, os, queue, re, signal, socket, struct, subprocess, sys, threading, time, glob
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie, CookieError
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ft897_access as acc
 from ft897_lsb import Invert, PIVOT
+import ft897_cw as cwm
 from ft897_tap import TickClean
 import ft897_radio as radios
 from ft897_radio import parse_raw
 cfg = acc.cfg
 
-VERSION = "2026.11.25b"
+VERSION = "2026.11.27"
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
@@ -54,9 +55,13 @@ p.add_argument("--rate", type=int, default=48000, help="audio sample rate")
 p.add_argument("--stall", type=float, default=1.5, help="un-key if TX audio from the laptop stops for this long (s)")
 p.add_argument("--no-audio-check", action="store_true", help="allow keying with no laptop audio link (e.g. CW keyer "
                "apps); the disconnect and --tx-timeout checks still apply")
+p.add_argument("--xara", default="~/.local/bin/xara", help="xara, the VARA-compatible modem for Winlink on the Pi")
+p.add_argument("--pat", default="", help="Pat, the Winlink mail program (default: pat, or pat-winlink as Ubuntu's own package names it)")
+p.add_argument("--pat-port", type=int, default=8092, help="TCP port for Pat's mailbox web page while Winlink runs")
 p.add_argument("--dummy", action="store_true", help="test mode: Hamlib dummy rig, ALSA null audio, no radio needed")
 p.add_argument("-v", "--verbose", action="store_true", help="log PTT, frequency changes and connections")
 a = p.parse_args()
+TX_RAW = os.environ.get("FT897_TX_RAW", "") if a.dummy else ""        # test mode only: a file that gets the transmit audio
 FAKE = os.environ.get("FT897_FAKE_METERS", "") if a.dummy else ""      # test mode only: a file with {"freq", "split", "swr", "hi_swr"}
 RADIO = radios.pick(a.radio, a.model)
 if not a.model: a.model = RADIO.model
@@ -83,7 +88,7 @@ st = {"keyed": False, "keyed_by": None, "key_ts": 0.0, "audio": None, "audio_add
       "draining": False, "last_sound": 0.0, "tx_sq": 0, "tx_n": 0, "tx_peak": 0, "tx_meter": [], "prebuf": PREBUF,
       "smeter_live": not RADIO.ticks, "owner": None, "owner_name": None, "owner_seen": 0.0, "cat_clients": {}, "audio_ip": None, "audio_since": 0.0,
       "req": None, "answers": {}, "swr_n": 0, "tx_hz": 0, "vfo_freq": {}, "meter_ok": True, "web_ptt_seen": 0.0, "panel_seen": 0.0, "panels": {}, "rig": {}, "rit": 0,
-      "lsb": False, "lsb_at": 0.0, "cat_fail": 0, "cat_dead": False, "alive_at": 0.0, "stuck": None, "unkeys": 0,
+      "lsb": False, "lsb_at": 0.0, "cw": 0, "cw_at": 0.0, "cat_fail": 0, "cat_dead": False, "alive_at": 0.0, "stuck": None, "unkeys": 0,
       "rpt": {"shift": None, "offset": None, "tone": None, "mode": None, "dcs": None, "hz": 0}, "last_tx": 0, "unkey_at": 0.0}      # last set over CAT: the radio can't report it                     # software LSB on: the radio is in DIG, its dial PIVOT Hz below the LSB carrier
 
 def dbfs(v):
@@ -241,8 +246,8 @@ def rig_ready():
                 if not a.dummy and not radio.alive(): log("the radio does not answer a status request")
                 if radio.check(): log("NOT the right radio: " + radio.check())
             except Exception as e: log(f"start check: {e!r}")
-            try: lsb_resume()
-            except Exception as e: log(f"software LSB not resumed: {e!r}")
+            try: lsb_resume(); cw_resume()
+            except Exception as e: log(f"software LSB / CW not resumed: {e!r}")
             return
         except (OSError, ValueError): pass
     log(f"rigctld does not answer: check the CAT cable, the radio's menu {RADIO.baud_menu}, and that the radio is on")
@@ -329,8 +334,9 @@ def tx_freq(hz, mode):
     # while it transmits (and for a moment after) the FT-897 reports the transmit frequency itself
     if st["keyed"] or (st["last_tx"] and abs(hz - st["last_tx"]) < 5 and (time.time() - st["unkey_at"] < 3 or st["rig"].get("freq_at", 0) < st["unkey_at"] + 1)): return hz
     return hz + (r["offset"] if r["shift"] == "+" else -r["offset"]) if mode in ("FM", "FMN") and r["shift"] in ("+", "-") and r["offset"] else hz
-def vhz(hz): return hz + PIVOT if st["lsb"] and hz else hz         # the frequency to show and to check: the LSB carrier
-def raw_hz(hz): return hz - PIVOT if st["lsb"] else hz             # what the dial has to be
+def soft_off(): return PIVOT if st["lsb"] else st["cw"]              # software LSB / CW: how far the dial is below the carrier
+def vhz(hz): return hz + soft_off() if hz else hz                     # the frequency to show and to check: the carrier
+def raw_hz(hz): return hz - soft_off()                                # what the dial has to be
 def tx_reason(v):
     """Locks for a carrier frequency as shown; with software LSB the signal is the 2.8 kHz below it."""
     return acc.reason(v) or (acc.reason(v - 2800) if st["lsb"] and v else "")
@@ -361,6 +367,9 @@ def lsb_on(hz=None):
     if d is None and KNOWN: return 1, "the radio's DIG menu could not be read: is the radio on?"
     if d is not None and d != 5: return 1, "set the radio's menu 038 DIG MODE to USER-U first"
     if rig.cmd("s")[1].get("Split") == "1": return 1, "switch split off first"
+    if st["cw"]:
+        if hz is None: hz = vhz(st["rig"].get("freq") or 0) or None
+        cw_set(0, "LSB voice chosen")
     if hz is None:
         if st["lsb"]:
             if rig.cmd("m")[1].get("Mode") == "PKTUSB": return 0, ""
@@ -392,6 +401,190 @@ def lsb_resume():
         try: os.remove(LSB_FILE)
         except OSError: pass
 
+# ---------------------------------------------------------------- CW through DIG (mode "DCW" to the panel; ft897_cw.py)
+CW_SHM = "/dev/shm/ft897-cw.json" if RADIO.caps["lsb"] and os.path.isdir("/dev/shm") and not a.dummy else ""
+CW_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cw.json")
+CWDEF = {"wpm": 20, "pitch": 700, "hang": 0.8, "level": -6.0, "farns": 0, "auto": True}
+CWR = {"wpm": (5, 50), "pitch": (400, 1000), "hang": (0.2, 3.0), "level": (-30.0, 0.0), "farns": (0, 50)}
+cwset = dict(CWDEF)
+def cw_load():
+    try:
+        with open(CW_FILE) as f: cw_clean(json.load(f))
+    except (OSError, ValueError, TypeError): pass
+def cw_clean(j):
+    """Copies valid settings from j into cwset. -> list of what changed"""
+    ch = []
+    if not isinstance(j, dict): return ch
+    for k, (lo, hi) in CWR.items():
+        v = j.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            v = type(CWDEF[k])(max(lo, min(hi, v)))
+            if v != cwset[k]: cwset[k] = v; ch.append(k)
+    if isinstance(j.get("auto"), bool) and j["auto"] != cwset["auto"]: cwset["auto"] = j["auto"]; ch.append("auto")
+    return ch
+def cw_save():
+    try:
+        with open(CW_FILE + ".tmp", "w") as f: json.dump(cwset, f)
+        os.replace(CW_FILE + ".tmp", CW_FILE)
+    except OSError as e: log(f"cw.json not saved: {e}")
+cwtl = cwm.Timeline()
+cwq = {"text": [], "next": 0.0, "played": [], "sent": "", "err": "", "err_at": 0.0, "stop": False, "who": "", "ip": "", "seen_down": 0.0}
+cw_lock = threading.Lock()
+cw_dec = cwm.Decoder(CWDEF["pitch"], 20)          # listens from 20 WPM and follows the station, whatever speed you send at
+cw_rxq = queue.Queue(maxsize=50)
+def cw_set(pitch, why=""):
+    """CW mode on (pitch Hz: the dial is that far below the carrier) or off (0). Only flags: cw_on / cw_leave tune."""
+    with lock:
+        if st["cw"] == pitch: return
+        was = st["cw"]; st["cw"] = pitch; st["cw_at"] = time.time(); st["tx_hz"] = 0
+    with cw_lock: cwq["text"].clear(); cwq["played"].clear()
+    cwtl.clear(time.time()); cw_dec.set_f(pitch or cwset["pitch"])        # (the decoder keeps the speed it last heard)
+    if bool(was) != bool(pitch): log(f"CW keyer mode {'on' if pitch else 'off'}" + (f" ({why})" if why else ""))
+    try:
+        if CW_SHM and pitch:
+            with open(CW_SHM, "w") as f: json.dump({"pitch": pitch}, f)
+        elif CW_SHM and os.path.exists(CW_SHM): os.remove(CW_SHM)
+    except OSError: pass
+def cw_on(hz=None):
+    """Into CW keyer mode on carrier hz (None = the frequency shown now). -> (code, message)"""
+    if not RADIO.caps["lsb"]: return 1, "this radio has no CW keyer mode yet"
+    if a.rate != 48000: return 1, "the CW keyer needs the 48 kHz audio rate"
+    if st["keyed"]: return 1, "transmitting"
+    d = dig_upper()
+    if d == 4: return 1, "the radio's DIG is USER-L (menu 038): set it to USER-U for the CW keyer"
+    if d is None and KNOWN: return 1, "the radio's DIG menu could not be read: is the radio on?"
+    if d is not None and d != 5: return 1, "set the radio's menu 038 DIG MODE to USER-U first"
+    if rig.cmd("s")[1].get("Split") == "1": return 1, "switch split off first"
+    if hz is None:
+        if st["cw"] and rig.cmd("m")[1].get("Mode") == "PKTUSB": return 0, ""
+        if st["lsb"] or st["cw"]: hz = vhz(st["rig"].get("freq") or 0)
+        else:
+            r, v = rig.cmd("f")
+            try: hz = int(float(v.get("Frequency", 0)))
+            except ValueError: hz = 0
+            if r or not hz: return r or 1, "the frequency is not known"
+    if not 1_000_000 <= hz <= RADIO.max_hz: return 1, "frequency out of range"
+    if st["lsb"]: lsb_set(False, "CW keyer chosen")
+    p = cwset["pitch"]
+    for cmd in ("M PKTUSB 0", f"F {hz - p}"):
+        r = rig.cmd(cmd)[0]
+        if r != 0: return r, f"the radio refused \"{cmd}\" (RPRT {r})"
+    with lock: st["rig"].update(freq=hz - p, mode="PKTUSB")
+    cw_set(p); return 0, ""
+def cw_leave(restore=True, why=""):
+    """Out of CW keyer mode; restore: put the dial on the carrier frequency."""
+    if not st["cw"]: return
+    if restore:
+        try: hz = int(float(rig.cmd("f")[1].get("Frequency", 0)))
+        except ValueError: hz = 0
+        if hz and rig.cmd(f"F {hz + st['cw']}")[0] == 0:
+            with lock: st["rig"]["freq"] = hz + st["cw"]
+    cw_set(0, why)
+def cw_resume():
+    if not CW_SHM or not os.path.exists(CW_SHM): return
+    try:
+        with open(CW_SHM) as f: p = int(json.load(f).get("pitch") or 0)
+    except (OSError, ValueError, TypeError, AttributeError): p = 0
+    if p and rig.cmd("m")[1].get("Mode") == "PKTUSB": cw_set(p, "as before the restart")
+    else: cw_set(0)
+def cw_err(why):
+    with cw_lock: cwq["err"] = why; cwq["err_at"] = time.time(); cwq["text"].clear()
+    cwtl.clear(time.time())
+def cw_amp(): return 10 ** (min(cwset["level"], cfg["max_drive"]) / 20)
+def cw_mine(): return (st["keyed_by"] or "").startswith("cw:")
+def cw_loop():
+    """Keys the radio for the CW keyer, feeds typed text into the timeline, lets go after the hang time, and lets go of a key that
+    is held down while the panel has gone quiet (browser closed, Wi-Fi drop)."""
+    while True:
+        time.sleep(0.005); now = time.time()
+        if not st["cw"]:
+            if cw_mine(): rig.cmd("T 0"); set_keyed(False, None, "CW mode left")
+            continue
+        with cw_lock:                              # typed text: keep about a second scheduled ahead
+            while cwq["text"] and not cwq["stop"]:
+                start = max(cwq["next"], cwtl.end, now + 0.15)
+                if start > now + 1.0: break
+                tok = cwq["text"].pop(0)
+                ev, nxt = cwm.char_events(tok, start, cwset["wpm"], cwset["farns"])
+                cwtl.add(ev); cwq["next"] = nxt; cwq["played"].append((start, tok))
+            while cwq["played"] and cwq["played"][0][0] <= now - cwm.DELAY * 0:
+                cwq["sent"] = (cwq["sent"] + cwq["played"].pop(0)[1])[-80:]
+            stop = cwq["stop"]; cwq["stop"] = False
+        busy = cwtl.busy(now)
+        if stop:
+            cwtl.clear(now)
+            if cw_mine(): rig.cmd("T 0"); set_keyed(False, None, "CW stopped")
+            continue
+        if busy and not cw_mine():
+            if st["keyed"]: cw_err(f"already keyed by {st['keyed_by']}"); continue
+            why = tx_block()
+            if why: log(f"CW refused: {why}"); cw_err(why); continue
+            with lock:
+                if st["keyed"]: cw_err(f"already keyed by {st['keyed_by']}"); continue
+                set_keyed(True, "cw:" + (cwq["ip"] or "?"))
+            c, _ = rig.cmd("T 1")
+            if c != 0: set_keyed(False, None); cw_err(f"radio refused PTT (RPRT {c})"); continue
+            log(f"radio KEYED by the CW keyer ({cwq['who']})")
+        if cw_mine():
+            with cwtl.l: down = bool(cwtl.ev) and cwtl.ev[-1][1]; ds = cwtl.down_since; seen = cwtl.seen
+            if down and now - seen > 1.0: cwtl.force_up(now); cw_err("the key was let go: the panel stopped answering")
+            elif down and ds and now - ds > 15: cwtl.force_up(now); cw_err("the key was held down for 15 s")
+            if not cwtl.busy(now) and now > cwtl.end + cwset["hang"] and not cwq["text"]:
+                rig.cmd("T 0"); set_keyed(False, None)
+        cwtl.prune(now - 0.5)
+def cw_rx_loop():
+    """Decoder: 48 kHz frames from rx_loop -> 8 kHz -> ft897_cw.Decoder."""
+    last = 0.0
+    while True:
+        d = cw_rxq.get()
+        s = array.array("h", d)
+        cw_dec.feed([sum(s[i:i + 6]) / 6 for i in range(0, len(s) - 5, 6)])
+        if cwset["auto"] and time.time() - last > 0.5: last = time.time(); cw_dec.track(st["cw"] or cwset["pitch"])
+def cw_rx_feed(d):
+    if st["cw"] and not st["keyed"]:
+        try: cw_rxq.put_nowait(d)
+        except queue.Full: pass
+def cw_op(ip, j, admin=False):
+    op = j.get("op")
+    if op == "set":
+        if cfg["locks"].get("txaudio") and not admin and "level" in j: return 1, "the transmit audio settings are locked by the administrator"
+        old = cwset["pitch"]; ch = cw_clean(j)
+        if "pitch" in ch and st["cw"]:
+            if st["keyed"]: cwset["pitch"] = old; return 1, "not while transmitting"
+            hz = vhz(st["rig"].get("freq") or 0); p = cwset["pitch"]
+            if hz and rig.cmd(f"F {hz - p}")[0] == 0:
+                with lock: st["rig"]["freq"] = hz - p
+            cw_set(p)
+        if "pitch" in ch or "auto" in ch: cw_dec.set_f(st["cw"] or cwset["pitch"])
+        if ch: cw_save()
+        return 0, ""
+    if op == "clear": cw_dec.text = ""; return 0, ""
+    if op == "stop":
+        with cw_lock: cwq["text"].clear(); cwq["played"].clear(); cwq["stop"] = True
+        return 0, ""
+    if not st["cw"]: return 1, "choose the CW keyer mode first"
+    if op == "key":
+        ev = j.get("ev") or []
+        if not isinstance(ev, list) or len(ev) > 200: return 1, "bad events"
+        with cw_lock: cwq["who"] = host_name(ip); cwq["ip"] = ip
+        if ev and st["keyed"] and not cw_mine(): return 1, f"already keyed by {st['keyed_by']}"
+        cwtl.add_panel(ev, time.time()); return 0, ""
+    if op == "text":
+        t = cwm.clean_text(j.get("text"), 1000)
+        if not t.strip(): return 1, "nothing to send"
+        with cw_lock:
+            if len(cwq["text"]) + len(t) > 2000: return 1, "too much text queued"
+            cwq["who"] = host_name(ip); cwq["ip"] = ip; cwq["text"].extend(cwm.tokens(t))
+        return 0, ""
+    return 1, "unknown CW command"
+def cw_state():
+    now = time.time()
+    with cw_lock:
+        q = "".join(t for _, t in cwq["played"]) + "".join(cwq["text"])
+        return {**cwset, "on": bool(st["cw"]), "rx": cw_dec.text[-400:], "rx_f": round(cw_dec.f), "rx_wpm": cw_dec.wpm(),
+                "rx_snr": round(10 * __import__("math").log10(max(cw_dec.snr, 1e-9)), 1), "rx_on": cw_dec.on, "queue": q[:300], "sent": cwq["sent"],
+                "err": cwq["err"] if now - cwq["err_at"] < 8 else "", "keyed": cw_mine(), "delay": cwm.DELAY}
+
 def tx_block():
     """Asked before the radio is keyed, on every path: why transmitting is not allowed now ("" = go ahead). Reads the
     frequency from the radio, as its dial may have been turned. With split on, the other VFO is the one that transmits."""
@@ -402,14 +595,20 @@ def tx_block():
     if radio.check(): return radio.check()
     try: hz = int(float(rig.cmd("f")[1].get("Frequency", 0)))
     except ValueError: hz = 0
+    m = rig.cmd("m")[1].get("Mode")
     if st["lsb"]:
-        m = rig.cmd("m")[1].get("Mode")
         if m != "PKTUSB":
             lsb_set(False, f"the radio is in {m}"); return "the radio's mode was changed: LSB voice is off now, press its button again"
-        hz = vhz(hz)
+        hz = vhz(hz); m = "DLSB"
+    elif st["cw"]:
+        if m != "PKTUSB":
+            cw_set(0, f"the radio is in {m}"); return "the radio's mode was changed: the CW keyer is off now, press its button again"
+        hz = vhz(hz); m = "DCW"
+    if acc.mode_reason(m): return acc.mode_reason(m)
+    with lock: st["tx_mode_why"] = ""
     c, v = rig.cmd("s")
     if c == 0 and v.get("Split") == "1":
-        if st["lsb"]: return "switch split off: LSB voice can't use it"
+        if st["lsb"] or st["cw"]: return "switch split off: LSB voice and the CW keyer can't use it"
         tx = v.get("TX VFO"); cur = rig.cmd("v")[1].get("VFO")
         if hz and cur: st["vfo_freq"][cur] = hz
         if cur == tx: pass
@@ -419,8 +618,8 @@ def tx_block():
             if not hz and acc.reason(0): return f"split is on and the frequency of {tx} is not known yet: select it once"
     tx = hz
     if RADIO.caps["reports"] and not a.dummy: rpt_read()
-    if st["rpt"]["shift"] in ("+", "-") and not st["lsb"]:
-        tx = tx_freq(hz, rig.cmd("m")[1].get("Mode"))
+    if st["rpt"]["shift"] in ("+", "-") and not st["lsb"] and not st["cw"]:
+        tx = tx_freq(hz, m)
     why = tx_reason(tx)
     if why and tx != hz: why = f"the repeater shift would transmit on {acc.mhz(tx)}: {why}"
     if not why:
@@ -437,7 +636,8 @@ def watchdog():
                 if keyed_for > cfg["tx_timeout"]:
                     why = f"keyed for more than {cfg['tx_timeout']} s"
                 elif st["tx_hz"] and tx_reason(st["tx_hz"]): why = tx_reason(st["tx_hz"])      # locked meanwhile
-                elif not a.no_audio_check:
+                elif st.get("tx_mode_why"): why = st["tx_mode_why"]                              # mode changed on the radio itself
+                elif not a.no_audio_check and not cw_mine():           # (the CW keyer makes its own audio)
                     if st["audio"] is None and keyed_for > a.stall:
                         why = "no laptop audio link (start ft897-audio.py on the laptop)"
                     elif st["audio"] is not None and now - max(st["last_audio"], st["key_ts"]) > a.stall:
@@ -549,9 +749,9 @@ def cat_client(c, addr):
                 if RADIO.key == "ft891" and not a.dummy and re.fullmatch(r"[+;|,]?(S|\\set_split_vfo)( currVFO| VFO[AB])? 0( \w+)?", text.strip()):      # Hamlib 4.5.5 can't: RPRT -12
                     ok = radio.line("S 0 VFOA")[0] == 0
                     c.sendall((b"set_split_vfo: 0 VFOA\n" if text.strip()[:1] in "+;|," else b"") + (b"RPRT 0\n" if ok else b"RPRT -9\n")); continue
-                if st["lsb"] and tok0(text) in ("F", "M", "V", "S", "I", "X", "G", "\\set_freq", "\\set_mode", "\\set_vfo", "\\set_split_vfo", "\\set_split_freq", "\\set_split_mode", "\\vfo_op"):
+                if (st["lsb"] or st["cw"]) and tok0(text) in ("F", "M", "V", "S", "I", "X", "G", "\\set_freq", "\\set_mode", "\\set_vfo", "\\set_split_vfo", "\\set_split_freq", "\\set_split_mode", "\\vfo_op"):
                     if st["keyed"]: c.sendall(b"RPRT -9\n"); continue
-                    lsb_set(False, f"{name} sets the radio")             # an app such as WSJT-X has taken over
+                    lsb_set(False, f"{name} sets the radio"); cw_set(0, f"{name} sets the radio")          # an app such as WSJT-X has taken over
                 if v is True and not (st["keyed"] and st["keyed_by"] == name):
                     why = f"already keyed by {st['keyed_by']}" if st["keyed"] else tx_block()
                     if why:
@@ -570,6 +770,8 @@ def cat_client(c, addr):
                 if len(tok) > 1 and tok[-1] in ("VFOA", "VFOB") and tok[0] in ("S", "\\set_split_vfo"): st["tx_vfo"] = tok[-1]
                 if len(tok) > 1 and tok[0] in ("I", "\\set_split_freq") and tok[-1].split(".")[0].isdigit():
                     st["vfo_freq"][st.get("tx_vfo", "VFOB")] = int(tok[-1].split(".")[0])
+                if st["keyed"] and len(tok) > 1 and tok[0] in ("M", "\\set_mode") and acc.mode_reason(tok[1]):
+                    log(f"{name}: mode refused while transmitting: {acc.mode_reason(tok[1])}"); c.sendall(b"RPRT -9\n"); continue
                 if st["keyed"] and len(tok) > 1 and tok[0] in ("F", "\\set_freq") and tok[-1].split(".")[0].isdigit():
                     why = acc.reason(int(tok[-1].split(".")[0]))      # moving while transmitting: not into a locked band
                     if why: log(f"{name}: frequency refused while transmitting: {why}"); c.sendall(b"RPRT -9\n"); continue
@@ -646,6 +848,7 @@ def rx_loop():
             d = inv_rx.process(tone) if st["lsb"] else tone
             if st["audio"] is not None: audio_send(b"A", d)
             if taps and not st["keyed"]: tap_feed(b"R", d)
+            cw_rx_feed(d)
     while True:
         dev = wait_card()
         cid = card_index(dev)
@@ -659,20 +862,24 @@ def rx_loop():
             if st["lsb"] and (c is not None or taps): d = inv_rx.process(d)
             if c is not None: audio_send(b"A", d)
             if taps and not st["keyed"]: tap_feed(b"R", d)     # (during transmit: the transmit audio, from tx_loop)
+            cw_rx_feed(d)
         err = pr.stderr.read().decode(errors="replace").strip()
         log(f"RX audio stopped ({err or 'exit ' + str(pr.wait())}): retrying in 2 s"); time.sleep(2)
 
 def tx_loop():
     """laptop -> Digirig sound card. Writes one 20 ms frame at a time into a 4 kB pipe, so audio reaches the radio
     within ~0.15 s (a full 64 kB pipe would add 0.7 s and cut off the end of every transmission)."""
-    silence = bytes(FRAME)
+    silence = bytes(FRAME); tone = cwm.Tone(a.rate); gen_t = None; LAT = 0.14
     while True:
         dev = wait_card()
         log(f"TX audio to {dev}")
         if dev == "null":                      # test mode: play into nothing at the real pace
             class Paced:
                 t = time.time()
-                def write(self, b): Paced.t += len(b) / (a.rate * 2); time.sleep(max(0, Paced.t - time.time()))
+                def write(self, b):
+                    Paced.t += len(b) / (a.rate * 2); time.sleep(max(0, Paced.t - time.time()))
+                    if TX_RAW:                 # test mode only: what would go to the radio
+                        with open(TX_RAW, "ab") as f: f.write(b if st["keyed"] else bytes(len(b)))
                 def flush(self): pass
                 def fileno(self): return -1
             class Fake:
@@ -685,6 +892,17 @@ def tx_loop():
         except (OSError, ValueError): pass
         try:
             while pr.poll() is None:
+                if st["keyed"] and cw_mine() and st["cw"]:     # the CW keyer: a keyed tone, made here
+                    now = time.time()
+                    if gen_t is None or abs(gen_t - (now + LAT)) > 0.08: gen_t = now + LAT
+                    chunk = tone.frame(gen_t, FRAME // 2, cwtl, st["cw"], cw_amp()); gen_t += FRAME_MS / 1000
+                    smp = array.array("h", chunk); pk = max(max(smp), -min(smp))
+                    with lock:
+                        st["tx_played"] += FRAME; st["tx_sound"] += FRAME if pk else 0; st["tx_peak"] = max(st["tx_peak"], pk)
+                        if pk: st["tx_sq"] += (pk * pk) // 2 * len(smp); st["tx_n"] += len(smp)        # (a sine: rms = peak / sqrt 2)
+                    if taps: tap_feed(b"T", chunk)
+                    pr.stdin.write(chunk); pr.stdin.flush(); continue
+                gen_t = None
                 with lock:
                     q = st["txq"]
                     if st["keyed"] and not st["playing"] and (len(q) >= st["prebuf"] or (st["draining"] and q)):
@@ -789,6 +1007,141 @@ def audio_server():
     while True:
         c, addr = srv.accept()
         threading.Thread(target=audio_client, args=(c, addr), daemon=True).start()
+
+# ---------------------------------------------------------------- Winlink on the Pi: xara (VARA-compatible modem) + Pat (mail)
+WL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "winlink.json")
+WLDEF = {"call": "", "locator": "", "bw": 2300, "drive": -12.0}      # drive: as for WSJT-X, no ALC
+wlset = dict(WLDEF)
+wl = {"procs": {}, "by": None, "since": 0.0, "log": collections.deque(maxlen=60), "err": "", "stopping": False}
+wl_lock = threading.Lock()
+LOOP_IN, LOOP_OUT = "plughw:CARD=Loopback,DEV=1,SUBDEV=0", "plughw:CARD=Loopback,DEV=0,SUBDEV=1"     # xara's capture / playback
+def wl_load():
+    try:
+        with open(WL_FILE) as f: wl_clean(json.load(f))
+    except (OSError, ValueError, TypeError): pass
+def wl_clean(j):
+    if not isinstance(j, dict): return
+    c = str(j.get("call", wlset["call"]) or "").strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{3,7}(-[0-9]{1,2})?", c) or c == "": wlset["call"] = c
+    g = str(j.get("locator", wlset["locator"]) or "").strip()
+    if re.fullmatch(r"[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?", g) or g == "": wlset["locator"] = g[:2].upper() + g[2:4] + g[4:].lower()
+    if j.get("bw") in (500, 2300, 2750): wlset["bw"] = j["bw"]
+    if isinstance(j.get("drive"), (int, float)) and not isinstance(j.get("drive"), bool): wlset["drive"] = float(max(-30, min(0, j["drive"])))
+def wl_save():
+    try:
+        with open(WL_FILE + ".tmp", "w") as f: json.dump(wlset, f)
+        os.replace(WL_FILE + ".tmp", WL_FILE)
+    except OSError as e: log(f"winlink.json not saved: {e}")
+def pat_bin(): return a.pat or shutil.which("pat") or shutil.which("pat-winlink") or "pat"      # (looked up each time: Pat may be upgraded meanwhile)
+def wl_xara(): return os.path.expanduser(a.xara)
+XARA_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xara-state") if a.dummy else os.path.expanduser("~/.local/state/xara")
+def wl_missing():
+    """What is not installed for Winlink on the Pi ("" = all there)."""
+    if not os.path.isfile(wl_xara()) or not os.access(wl_xara(), os.X_OK): return f"xara is not installed ({a.xara}): see the manual, Winlink on the Pi"
+    if not shutil.which(pat_bin()): return "Pat is not installed (sudo apt install pat)"
+    if not a.dummy and not os.path.exists("/proc/asound/Loopback"): return "the loopback sound card is not there (sudo modprobe snd-aloop; see the manual)"
+    return ""
+def wl_running():
+    with wl_lock: return bool(wl["procs"])
+def wl_reader(name, pr):
+    for line in iter(pr.stdout.readline, b""):
+        t = line.decode(errors="replace").rstrip()
+        if "got a vara command I wasn't expecting" in t: continue       # Pat 0.15 doesn't know VARA's SN / BITRATE reports: harmless
+        if t: wl["log"].append(f"{time.strftime('%H:%M:%S')} {name}: {t[:200]}")
+    rc = pr.wait()
+    with wl_lock: mine = wl["procs"].get(name) is pr; stopping = wl["stopping"]
+    if mine and not stopping:
+        wl["err"] = f"{name} stopped (exit {rc}): see its log"; log(f"Winlink: {name} stopped (exit {rc}); stopping the rest")
+        threading.Thread(target=wl_stop, args=(f"{name} stopped",), daemon=True).start()
+def wl_pat_config():
+    """Pat's settings for this Pi: VARA HF on xara, the radio through the bridge's CAT port, the web page on --pat-port.
+    The Winlink password is never written here by the bridge: Pat asks for it, or you enter it in Pat."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pat-config.json") if a.dummy else os.path.expanduser("~/.config/pat/config.json")
+    try:
+        with open(path) as f: c = json.load(f)
+    except (OSError, ValueError): c = {}
+    if not isinstance(c, dict): c = {}
+    c["mycall"] = wlset["call"]; c["locator"] = wlset["locator"] or c.get("locator", "")
+    c["http_addr"] = f"{a.bind}:{a.pat_port}"
+    c.setdefault("service_codes", ["PUBLIC"])
+    rigs = c.get("hamlib_rigs") if isinstance(c.get("hamlib_rigs"), dict) else {}
+    rigs["ft897"] = {"address": f"127.0.0.1:{a.cat_port}", "network": "tcp"}; c["hamlib_rigs"] = rigs
+    v = c.get("varahf") if isinstance(c.get("varahf"), dict) else {}
+    v.update({"addr": "127.0.0.1:8300", "bandwidth": wlset["bw"], "rig": "ft897", "ptt_ctrl": False}); c["varahf"] = v
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f: json.dump(c, f, indent=2)
+    os.chmod(path + ".tmp", 0o600); os.replace(path + ".tmp", path)
+    return path
+def wl_start(ip, stop_voice=False):
+    if wl_running(): return 0, ""
+    why = wl_missing()
+    if why: return 1, why
+    if not wlset["call"]: return 1, "enter your call sign first"
+    if st["keyed"]: return 1, "transmitting"
+    with lock: aud = st["audio"]; voice = bool(aud is not None and (st.get("client") or {}).get("voice") is not False)
+    if aud is not None:
+        if not stop_voice: return 1, "the voice client is connected: Winlink needs the audio link (stop the voice client first)"
+        if voice: audio_send(b"C", json.dumps({"act": "quit"}).encode())
+        else: drop_audio(aud, "Winlink on the Pi started")
+        for _ in range(30):
+            if st["audio"] is None: break
+            time.sleep(0.1)
+        if st["audio"] is not None: drop_audio(st["audio"], "Winlink on the Pi started")
+    if st["lsb"]: lsb_leave(True, "Winlink started")
+    if st["cw"]: cw_leave(True, "Winlink started")
+    rig.cmd("M PKTUSB 0")
+    try: pc = wl_pat_config()
+    except OSError as e: return 1, f"Pat's settings could not be written: {e}"
+    here = os.path.dirname(os.path.abspath(__file__))
+    cmds = {"audio": [sys.executable, "-u", os.path.join(here, "ft897-winlink-audio.py"), "--port", str(a.audio_port)],
+            "xara": [wl_xara(), "--call", wlset["call"].split("-")[0], "--hf", str(wlset["bw"]), "--audio", "alsa", "--capture", LOOP_IN,
+                     "--playback", LOOP_OUT, "--radio", "--ptt", f"rigctld:127.0.0.1:{a.cat_port}", "--drive-db", f"{wlset['drive']:g}",
+                     "--addr", "127.0.0.1", "--kiss-port", "off", "--tx-buffer-ms", "120", "--state-dir", XARA_STATE],
+            "pat": [pat_bin(), "--config", pc, "http", "--addr", f"{a.bind}:{a.pat_port}"]}
+    if a.dummy and os.environ.get("FT897_WL_FAKE"): cmds["xara"] = [sys.executable, "-u", os.environ["FT897_WL_FAKE"], "xara"]; cmds["pat"] = [sys.executable, "-u", os.environ["FT897_WL_FAKE"], "pat", str(a.pat_port)]
+    os.makedirs(XARA_STATE, exist_ok=True)
+    with wl_lock:
+        wl["err"] = ""; wl["stopping"] = False; wl["by"] = ip; wl["since"] = time.time(); wl["log"].clear()
+        for name in ("audio", "xara", "pat"):
+            try: pr = subprocess.Popen(cmds[name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+            except OSError as e:
+                wl["err"] = f"{name} could not start: {e}"; break
+            wl["procs"][name] = pr; threading.Thread(target=wl_reader, args=(name, pr), daemon=True).start()
+    if wl["err"]: wl_stop(wl["err"]); return 1, wl["err"]
+    log(f"Winlink on the Pi started by {label_of(ip)} ({wlset['call']}, VARA HF {wlset['bw']})")
+    return 0, ""
+def wl_stop(why=""):
+    with wl_lock:
+        if not wl["procs"]: return
+        wl["stopping"] = True; procs = dict(wl["procs"])
+    for name in ("pat", "xara", "audio"):            # xara first lets go of PTT; the bridge also un-keys when its CAT link closes
+        pr = procs.get(name)
+        if pr and pr.poll() is None:
+            try: pr.terminate()
+            except OSError: pass
+    for pr in procs.values():
+        try: pr.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            try: pr.kill()
+            except OSError: pass
+    with wl_lock: wl["procs"].clear(); wl["by"] = None
+    log("Winlink on the Pi stopped" + (f" ({why})" if why else ""))
+def wl_state():
+    with wl_lock:
+        on = bool(wl["procs"]); alive = {k: v.poll() is None for k, v in wl["procs"].items()}
+        return {**wlset, "on": on, "alive": alive, "by": label_of(wl["by"]) if wl["by"] else None, "since": int(time.time() - wl["since"]) if on else 0,
+                "err": wl["err"], "log": list(wl["log"])[-12:], "pat_port": a.pat_port, "missing": wl_missing()}
+def wl_op(ip, j):
+    op = j.get("op")
+    if op == "set":
+        if wl_running() and any(k in j for k in ("call", "bw", "drive")): return 1, "stop Winlink first"
+        old = dict(wlset); wl_clean(j)
+        if wlset != old: wl_save()
+        if j.get("call") and wlset["call"] != str(j["call"]).strip().upper(): return 1, "that call sign does not look right"
+        return 0, ""
+    if op == "start": return wl_start(ip, j.get("stop_voice") is True)
+    if op == "stop": threading.Thread(target=wl_stop, args=(f"by {label_of(ip)}",), daemon=True).start(); return 0, ""
+    return 1, "unknown Winlink command"
 
 # ---------------------------------------------------------------- rig poller (for the web panel)
 def fake_dead():
@@ -947,7 +1300,10 @@ def poller():
             c, v = rig.cmd("m")
             if c == 0:
                 r["mode"] = v.get("Mode"); r["passband"] = v.get("Passband")
+                why = acc.mode_reason("DLSB" if st["lsb"] else "DCW" if st["cw"] else r["mode"])          # (the mode just read, not the last one)
+                if st["keyed"] and why: st["tx_mode_why"] = why                 # the watchdog un-keys
                 if st["lsb"] and r["mode"] != "PKTUSB" and not st["keyed"] and time.time() - st["lsb_at"] > 2: lsb_set(False, f"the radio is in {r['mode']}")
+                if st["cw"] and r["mode"] != "PKTUSB" and not st["keyed"] and time.time() - st["cw_at"] > 2: cw_set(0, f"the radio is in {r['mode']}")
         if not st["keyed"] and time.time() - st["alive_at"] > (8 if not st["cat_fail"] and not st["stuck"] else 1.5): alive_check()
         if silent or quiet and st["audio"] is not None: r["ptt"] = False      # live S-meter: only the meter itself
         elif st["keyed"]: r["ptt"] = True              # (tx_meters asks the radio itself whether it transmits)
@@ -986,10 +1342,14 @@ def take_control(ip, label):
     with lock:
         st["owner"] = ip; st["owner_name"] = label; st["owner_seen"] = time.time()
         kb = st["keyed_by"] or ""; keyed = st["keyed"]
-        aud = st["audio"] if st["audio_ip"] != ip else None
+        aud = st["audio"] if st["audio_ip"] != ip and not (st["audio_ip"] == "127.0.0.1" and wl["by"] == ip) else None
         cats = [v for v in st["cat_clients"].values() if v["ip"] not in (ip, "127.0.0.1")]
     log(f"TAKE CONTROL by {label}: closing {len(cats)} CAT connection(s)" + (" and the audio link" if aud else ""))
-    if keyed and not (kb.startswith(ip + ":") or kb == "web:" + ip):
+    if wl_running() and wl["by"] != ip: wl_stop(f"radio taken over by {label}")
+    if cwq["ip"] and cwq["ip"] != ip:                  # the CW keyer's queue belonged to someone else
+        with cw_lock: cwq["text"].clear(); cwq["played"].clear()
+        cwtl.clear(time.time())
+    if keyed and not (kb.startswith(ip + ":") or kb in ("web:" + ip, "cw:" + ip)):
         safety_unkey(f"taken over by {label}")
     if aud is not None:
         try:
@@ -1010,11 +1370,12 @@ def in_use_by(ip):
     transmitting, has the audio link, or has an app on the CAT port."""
     with lock:
         if st["owner"]: return st["owner"] if st["owner"] != ip else None
+        here = lambda k: wl["by"] or k if k == "127.0.0.1" else k          # Winlink on the Pi: whoever started it
         kb = st["keyed_by"] or ""
         if st["keyed"]:
-            k = kb[4:] if kb.startswith("web:") else kb.rsplit(":", 1)[0]
+            k = here(kb[4:] if kb.startswith("web:") else kb[3:] if kb.startswith("cw:") else kb.rsplit(":", 1)[0])
             if k != ip: return k
-        if st["audio"] is not None and st["audio_ip"] != ip and time.time() - st["last_frame"] < 5: return st["audio_ip"]
+        if st["audio"] is not None and here(st["audio_ip"]) != ip and time.time() - st["last_frame"] < 5: return here(st["audio_ip"])
         return next((v["ip"] for v in st["cat_clients"].values() if v["ip"] not in (ip, "127.0.0.1")), None)
 
 def ask_control(ip, name):
@@ -1069,6 +1430,8 @@ def release_control(ip):
 
 # ---------------------------------------------------------------- web panel
 MODES = RADIO.modes
+if RADIO.key == "ft891": acc.MODE_NAME.update(PKTUSB="DATA-U", PKTLSB="DATA-L", FMN="FM-N")
+def cur_mode(): return "DLSB" if st["lsb"] else "DCW" if st["cw"] else st["rig"].get("mode")     # the mode as the panel shows it
 PANEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel.html")
 
 def web_ptt(ip, on, start=False):
@@ -1080,6 +1443,7 @@ def web_ptt(ip, on, start=False):
             if st["keyed"]:
                 if st["keyed_by"] == who: st["web_ptt_seen"] = time.time(); return 0, ""
                 return 1, f"already keyed by {st['keyed_by']}"
+        if st["cw"] and start: return 1, "in the CW keyer mode, key with the space bar or the arrow keys"
         if not start:
             s = st.get("safety"); return 1, "stopped: " + s["why"] if s and time.time() - s["at"] < 5 else "transmission ended: press PTT again"
         why = tx_block()
@@ -1121,8 +1485,8 @@ radio.dcs = DCS
 def dcs_cmd(code, sql):
     """DCS code as written (23 = D023); sql: receive squelch as well, else transmit only. Code 0: CTCSS / DCS off."""
     return "D 0" if not code else (f"\\set_dcs_sql {code}" if sql else f"D {code}")
-AUD_NUM = ("nr", "low", "high", "shift", "notch_f", "notch_w", "bass", "treble", "fmsq", "comp", "presence", "txlow", "txhigh")
-AUD_BOOL = ("anotch", "notch", "squelch", "sharp")
+AUD_NUM = ("nr", "low", "high", "shift", "notch_f", "notch_w", "notch2_f", "notch2_w", "bass", "treble", "fmsq", "comp", "presence", "txlow", "txhigh")
+AUD_BOOL = ("anotch", "notch", "notch2", "squelch", "sharp")
 def aud_clean(a):
     """Audio settings saved with a favorite: names to show and the settings themselves. Never volume, mic gain or drive."""
     if not isinstance(a, dict): return None
@@ -1188,7 +1552,11 @@ def rep_tune(i):
     if x["mode"] == "DLSB":
         if st["lsb"]: return rig.cmd(f"F {raw_hz(x['freq'])}")[0], ""
         return lsb_on(x["freq"])
+    if x["mode"] == "DCW":
+        if st["cw"]: return rig.cmd(f"F {raw_hz(x['freq'])}")[0], ""
+        return cw_on(x["freq"])
     if st["lsb"]: lsb_set(False, "a favorite was chosen")
+    if st["cw"]: cw_set(0, "a favorite was chosen")
     if x["mode"] not in ("FM", "WFM", "FMN"):              # shift and tones only exist in FM
         for c in (f"F {x['freq']}", f"M {x['mode']} 0"):
             r = rig.cmd(c)[0]
@@ -1210,6 +1578,10 @@ def web_cmd(ip, j, admin=False):
     if act == "audio":
         if L.get("txaudio") and (j.get("act") == "reset" or any(k in acc.TX_AUDIO for k in j.get("set") or {})): return 1, "the transmit audio settings are locked by the administrator"
         if L.get("tone") and j.get("act") == "tone": return 1, "the test tone is locked by the administrator"
+        if j.get("act") == "quit":                     # only the computer it runs on (or the administrator) may stop it
+            with lock: mine = st["audio_ip"] == ip; keyed = st["keyed"]
+            if not (mine or admin): return 1, "only the computer running the voice client can stop it"
+            if keyed: return 1, "not while transmitting"
         s = j.get("set")
         if isinstance(s, dict) and isinstance(s.get("drive"), (int, float)): s["drive"] = min(s["drive"], cfg["max_drive"])
     if act == "smeter":
@@ -1237,15 +1609,17 @@ def web_cmd(ip, j, admin=False):
         return rig.cmd(f"F {hz + d}")[0], ""
     if act == "mode":
         if j["mode"] not in MODES: return 1, "unknown mode"
+        if st["keyed"] and acc.mode_reason(j["mode"]): return 1, acc.mode_reason(j["mode"])
         if j["mode"] == "DLSB": return lsb_on()
-        if st["lsb"]:
+        if j["mode"] == "DCW": return cw_on()
+        if st["lsb"] or st["cw"]:
             if st["keyed"]: return 1, "transmitting"
-            lsb_leave(True, f"{j['mode']} chosen")
+            lsb_leave(True, f"{j['mode']} chosen"); cw_leave(True, f"{j['mode']} chosen")
         return rig.cmd(f"M {j['mode']} 0")[0], ""
     if act == "vfo":
         if j["vfo"] not in ("VFOA", "VFOB"): return 1, "bad VFO"
         if st["keyed"]: return 1, "transmitting"
-        if st["lsb"]: return 1, "leave LSB voice first (press another mode)"
+        if st["lsb"] or st["cw"]: return 1, "leave LSB voice / CW keyer first (press another mode)"
         return rig.cmd(f"V {j['vfo']}")[0], ""
     if act == "swap":
         if not RADIO.caps["swap"] or not KNOWN: return 1, "not on this radio"
@@ -1257,7 +1631,7 @@ def web_cmd(ip, j, admin=False):
         lo, hi = RADIO.caps["power"]; return radio.power(max(lo, min(hi, int(j["w"])))), ""
     if act == "split":
         if st["keyed"]: return 1, "transmitting"
-        if st["lsb"]: return 1, "leave LSB voice first (press another mode)"
+        if st["lsb"] or st["cw"]: return 1, "leave LSB voice / CW keyer first (press another mode)"
         with lock: cur = st["rig"].get("vfo") or "VFOA"
         tx = "VFOB" if cur == "VFOA" else "VFOA"
         return rig.cmd(f"S {1 if j['on'] else 0} {tx}")[0], ""
@@ -1297,14 +1671,16 @@ def state_for(ip, role=""):
                   "in_use": label_of(in_use_by(ip)) if in_use_by(ip) else None, "max_drive": cfg["max_drive"], "locks": cfg["locks"],
                   "req": {"name": q["name"], "to_me": q["to"] == ip, "mine": q["ip"] == ip, "to": label_of(q["to"]), "yes": q["yes"],
                           "left": max(0, round(cfg["answer_s"] - (now - q["at"]))), "no_answer": cfg["no_answer"]} if q else None,
-                  "answer": an if an and now - an["at"] < 8 else None, "bands": acc.locked_bands(), "trips": dict(acc.trips),
+                  "answer": an if an and now - an["at"] < 8 else None, "bands": acc.locked_bands(), "trips": dict(acc.trips), "modes": dict(cfg["modes"]), "hide_locked": cfg["hide_locked"],
                   "tx_why": (lambda t: ("the repeater shift would transmit on " + acc.mhz(t) + ": " if t != hz else "") + tx_reason(t) if tx_reason(t) else "")(tx_freq(hz, st["rig"].get("mode"))) if hz and not st["rig"].get("split") else "" if cfg["tx"] else acc.reason(1),
+                  "mode_why": acc.mode_reason(cur_mode()),
                   "safety": sf if sf and now - sf["at"] < 15 else None, "swr_on": cfg["swr"]["on"], "swr_level": cfg["swr"]["level"],
                   "meter_ok": st["meter_ok"], "reset_admin": cfg["swr"]["reset"] == "admin", "stuck": st["stuck"]}
+        access["tx_why"] = access["tx_why"] or access["mode_why"]
         cats = [{"ip": v["ip"], "name": host_name(v["ip"]), "since": int(now - v["since"])}
                 for v in st["cat_clients"].values() if v["ip"] != "127.0.0.1"]
         panels = [{"ip": k, "name": v["name"]} for k, v in st["panels"].items() if now - v["seen"] < 5]
-        return {"bridge": VERSION, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB", "dial": st["rig"].get("freq")} if st["lsb"] else dict(st["rig"]), "lsb": st["lsb"], "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
+        return {"bridge": VERSION, "radio": {"key": RADIO.key, "name": RADIO.name, "min": RADIO.min_hz, "max": RADIO.max_hz, "caps": RADIO.caps, "ticks": RADIO.ticks, "problem": radio.check()}, "you": ip, "rig_ok": st["rig_ok"] and not st["cat_dead"], "rig": {**st["rig"], "freq": hz, "mode": "DLSB" if st["lsb"] else "DCW", "dial": st["rig"].get("freq")} if st["lsb"] or st["cw"] else dict(st["rig"]), "lsb": st["lsb"], "cw": cw_state(), "winlink": wl_state(), "rpt": {**st["rpt"], "tx": tx_freq(hz, st["rig"].get("mode")) if hz else 0},
                 "rig_age": round(now - st["rig"].get("ts", 0), 1), "rit": st["rit"], "smeter_live": st.get("smeter_live", False),
                 "rep_v": rep["v"], "dcs_codes": DCS, "listening": st["audio"] is not None,
                 "client": st.get("client") if st["audio"] is not None and now - st.get("client_ts", 0) < 5 else None,
@@ -1359,7 +1735,7 @@ class Web(BaseHTTPRequestHandler):
             except OSError: return self.reply(404, b"admin.html missing", "text/plain")
         if self.path == "/api/admin":
             r = acc.role(self.token(), ip_of(self.client_address))
-            j = {"role": r, "admin_set": acc.has("admin"), "oper_set": acc.has("oper"), "radio": {"key": RADIO.key, "name": RADIO.name, "max": RADIO.max_hz}}
+            j = {"role": r, "admin_set": acc.has("admin"), "oper_set": acc.has("oper"), "radio": {"key": RADIO.key, "name": RADIO.name, "max": RADIO.max_hz, "modes": MODES, "labels": acc.MODE_NAME}}
             if r == "admin":
                 with acc.lock: j.update(cfg=json.loads(json.dumps(cfg)), trips=dict(acc.trips), problem=acc.problem, version=VERSION)
                 with lock: j["rig"] = dict(st["rig"])
@@ -1436,6 +1812,10 @@ class Web(BaseHTTPRequestHandler):
                 return self.reply(403, {"error": why_not()})
             if self.path == "/api/ptt":
                 c, err = web_ptt(ip, j.get("on") is True, j.get("start") is True)
+            elif self.path == "/api/winlink":
+                c, err = wl_op(ip, j)
+            elif self.path == "/api/cw":
+                c, err = cw_op(ip, j, admin)
             elif self.path == "/api/repeaters":
                 if cfg["locks"]["repeaters"] and not admin: return self.reply(403, {"error": "the repeater list is locked by the administrator"})
                 c, err = rep_op(j)
@@ -1487,6 +1867,8 @@ def web_server():
     srv.serve_forever()
 
 def on_stop(signum, frame):
+    try: wl_stop("the bridge stops")
+    except Exception: pass
     if st["keyed"]:
         try: rig_cmd("T 0", timeout=1)
         except OSError: pass
@@ -1497,7 +1879,7 @@ def on_stop(signum, frame):
     log("bridge stopped"); os._exit(0)
 
 if __name__ == "__main__":
-    acc.load(); rpt_load()
+    acc.load(); rpt_load(); cw_load(); wl_load(); cw_dec.set_f(cwset["pitch"])
     if acc.problem: log(acc.problem + ": no transmitting until the administration page is saved")
     signal.signal(signal.SIGTERM, on_stop); signal.signal(signal.SIGINT, on_stop)
     log(f"W5PL FT-897D network bridge {VERSION}" + (f", radio {RADIO.name}" if RADIO.key != "ft897d" else "") + (" (DUMMY test mode)" if a.dummy else ""))
@@ -1506,6 +1888,6 @@ if __name__ == "__main__":
             try: fn()
             except Exception as e:
                 import traceback; log(f"{fn.__name__} failed: {e!r}\n{traceback.format_exc()}"); time.sleep(2)
-    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server):
+    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server, cw_loop, cw_rx_loop):
         threading.Thread(target=supervised, args=(fn,), daemon=True).start()
     while True: time.sleep(3600)

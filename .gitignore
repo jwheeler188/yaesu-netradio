@@ -13,6 +13,11 @@ pi/settings.json
 pi/passwords.json
 pi/passwords.bak
 pi/repeaters.json
+pi/cw.json
+pi/winlink.json
+pi/pat-config.json
+pi/xara-state/
+pi/tx.raw
 pi/*.tmp
 pi/log.txt
 pi/backup-*/
@@ -20,3 +25,4 @@ pi/backup-*/
 # personal tools
 pi/tools/wifi24.sh
 make-test-package.sh
+macOS/FT-897 Voice Link.app/

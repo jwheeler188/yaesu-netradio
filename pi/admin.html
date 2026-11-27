@@ -56,6 +56,10 @@ form.pw label { display: grid; grid-template-columns: 210px 1fr; gap: 8px; align
   <div class="card"><h2>Bands</h2><p class="help">A locked band can still be listened to. The edges are the US ones: change them to your own limits or license. The lock works for the panel, WSJT-X and other programs. It can't stop the microphone or key plugged into the radio itself.</p>
     <div class="scroll"><table><thead><tr><th>Band</th><th>Transmit</th><th>From MHz</th><th>To MHz</th><th>Reason shown when locked</th></tr></thead><tbody id="bands"></tbody></table></div></div>
 
+  <div class="card"><h2>Modes</h2><p class="help">A locked mode can still be listened to: the radio just won't transmit in it, from the panel, WSJT-X or other programs. Useful for modes you can't or don't want to send, for example CW without a key.</p>
+    <div class="scroll"><table><thead><tr><th>Mode</th><th>Transmit</th><th>Reason shown when locked</th></tr></thead><tbody id="modes"></tbody></table></div>
+    <div class="f" style="margin-top:10px"><span>Hide locked bands and modes on the panel<small>Their buttons disappear for everyone. You can still go there by typing a frequency, and a band locked by high SWR always stays visible.</small></span><input type="checkbox" data-k="hide_locked"></div></div>
+
   <div class="card"><h2>Locked ranges</h2><p class="help">Parts of a band where transmitting is never allowed, for example where the antenna is not matched, or a local band-plan limit.</p>
     <div class="scroll"><table><thead><tr><th>From MHz</th><th>To MHz</th><th>Reason</th><th></th></tr></thead><tbody id="blocks"></tbody></table></div><div class="row"><button id="addb">Add a range</button></div></div>
 
@@ -117,6 +121,9 @@ function paint() {
   $("hosts").value = C.hosts.join(" ");
   $("bands").innerHTML = C.bands.map((b, i) => `<tr class="${b.tx ? "" : "off"}" data-i="${i}"><td><b>${esc(b.name)}</b></td><td><label><input type="checkbox" data-b="tx" ${b.tx ? "checked" : ""} aria-label="Transmit on ${esc(b.name)}"><span>${b.tx ? "Allowed" : "Locked"}</span></label></td>` +
     `<td><input class="mhz" data-b="lo" value="${mhz(b.lo)}" inputmode="decimal" aria-label="${esc(b.name)} from"></td><td><input class="mhz" data-b="hi" value="${mhz(b.hi)}" inputmode="decimal" aria-label="${esc(b.name)} to"></td><td class="note"><input data-b="note" maxlength="80" value="${esc(b.note)}" aria-label="${esc(b.name)} reason"></td></tr>`).join("");
+  const ML = D.radio.labels || {}, ms = D.radio.modes || [];
+  $("modes").innerHTML = ms.map(m => { const on = !(m in C.modes); return `<tr class="${on ? "" : "off"}" data-m="${esc(m)}"><td><b>${esc(ML[m] || m)}</b></td><td><label><input type="checkbox" data-b="tx" ${on ? "checked" : ""} aria-label="Transmit in ${esc(ML[m] || m)}"><span>${on ? "Allowed" : "Locked"}</span></label></td>` +
+    `<td class="note"><input data-b="note" maxlength="80" value="${on ? "" : esc(C.modes[m])}" ${on ? "disabled" : ""} aria-label="${esc(ML[m] || m)} reason"></td></tr>`; }).join("");
   $("blocks").innerHTML = C.blocks.map((b, i) => `<tr data-i="${i}"><td><input class="mhz" data-b="lo" value="${b.lo ? mhz(b.lo) : ""}" inputmode="decimal" aria-label="from"></td><td><input class="mhz" data-b="hi" value="${b.hi ? mhz(b.hi) : ""}" inputmode="decimal" aria-label="to"></td><td class="note"><input data-b="note" maxlength="80" value="${esc(b.note)}" aria-label="reason"></td><td><button data-del="${i}">Remove</button></td></tr>`).join("") || `<tr><td colspan="4" style="color:var(--dim)">None</td></tr>`;
   $("prob").hidden = !D.problem; $("prob").textContent = D.problem ? D.problem + ". Transmitting is off until you check this page and save it." : "";
   const t = Object.entries(D.trips || {}); $("trips").hidden = !t.length;
@@ -132,6 +139,11 @@ for (const id of ["bands", "blocks"]) $(id).addEventListener("input", e => {
   if (k === "tx") { b.tx = e.target.checked; tr.className = b.tx ? "" : "off"; tr.querySelector("label span").textContent = b.tx ? "Allowed" : "Locked"; }
   else b[k] = k === "note" ? e.target.value : hz(e.target.value) || 0;
   dirty();
+});
+$("modes").addEventListener("input", e => {
+  const tr = e.target.closest("tr"), k = e.target.dataset.b, m = tr && tr.dataset.m; if (!k || !m) return;
+  if (k === "tx") { if (e.target.checked) delete C.modes[m]; else C.modes[m] = tr.querySelector("[data-b=note]").value; paint(); }
+  else if (m in C.modes) { C.modes[m] = e.target.value; dirty(); }
 });
 $("blocks").addEventListener("click", e => { const d = e.target.dataset.del; if (d !== undefined) { C.blocks.splice(+d, 1); paint(); } });
 $("addb").onclick = () => { C.blocks.push({ lo: 0, hi: 0, note: "" }); paint(); $("blocks").querySelector("tr:last-child input").focus(); };

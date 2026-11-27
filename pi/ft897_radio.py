@@ -11,7 +11,7 @@ class FT897:
     key = "ft897d"; name = "FT-897D"; model = 1043; models = (1043, 1023, 1022)
     baud = 38400; ptt = "RTS"; serial_hint = "the Digirig's CP2102 serial port"; baud_menu = "019 (CAT RATE)"
     min_hz, max_hz = 100_000, 470_000_000
-    modes = ["LSB", "USB", "CW", "CWR", "AM", "FM", "WFM", "RTTY", "PKTUSB", "DLSB"]        # DLSB = software LSB through DIG
+    modes = ["LSB", "USB", "CW", "CWR", "AM", "FM", "WFM", "RTTY", "PKTUSB", "DLSB", "DCW"]        # DLSB = software LSB through DIG, DCW = CW keyer through DIG
     ticks = True                    # CAT leaks into the receive audio: keep the CAT line quiet while listening
     swr_level = None                # default step of the high-SWR shutdown (None = the one in ft897_access.py)
     rigctld_args = []

@@ -1,6 +1,6 @@
 """W5PL FT-897D network radio - audio processing for the laptop client (plain Python, nothing to install).
 
-RxDsp   receive: CAT tick remover -> manual notch -> automatic notches -> passband -> noise reduction -> voice squelch ->
+RxDsp   receive: CAT tick remover -> manual notches (2) -> automatic notches -> passband -> noise reduction -> voice squelch ->
         levelling (AGC) -> bass / treble -> [neural noise reduction] -> limiter. Works at 8 kHz inside, 48 kHz 16-bit mono in and out.
 Speech  transmit: low cut -> presence -> leveller -> soft clipping -> high cut -> limiter.
 Both read their settings from a plain dict, so they can be changed while running (keys, or the web panel).
@@ -14,11 +14,12 @@ DEFAULTS = {
     "notch_f": 1000, "notch_w": 100, "agc": "off", "bass": 0.0, "treble": 0.0, "squelch": False, "tick": True, "fmsq": 0,
     "neural": False,                                    # noise reduction by RNNoise instead of the standard method
     "sharp": True, "shift": 0,                          # sharp passband edges; shift moves the whole passband (Hz)
+    "notch2": False, "notch2_f": 1500, "notch2_w": 100, # a second manual notch
     # transmit
     "drive": -5.0, "mic": 0.0, "comp": 8.0, "presence": 6.0, "txlow": 300, "txhigh": 2800,
 }
 RANGES = {"volume": (-40, 20), "fmsq": (0, 30), "nr": (0, 24), "low": (50, 2500), "high": (300, 3400), "shift": (-1000, 1000), "notch_f": (100, 3300),
-          "notch_w": (20, 400), "bass": (-12, 12), "treble": (-12, 12), "drive": (-20, -1), "mic": (-20, 20),
+          "notch_w": (20, 400), "notch2_f": (100, 3300), "notch2_w": (20, 400), "bass": (-12, 12), "treble": (-12, 12), "drive": (-20, -1), "mic": (-20, 20),
           "comp": (0, 14), "presence": (0, 12), "txlow": (80, 500), "txhigh": (2000, 3200)}
 CHOICES = {"agc": ("off", "slow", "fast")}
 
@@ -423,7 +424,7 @@ class RxDsp:
         self.reconfigure()
     def reconfigure(self):
         s = self.s
-        key = (s["low"], s["high"], s.get("shift", 0), s.get("sharp", True), s["notch"], s["notch_f"], s["notch_w"], s["bass"], s["treble"])
+        key = (s["low"], s["high"], s.get("shift", 0), s.get("sharp", True), s["notch"], s["notch_f"], s["notch_w"], s.get("notch2"), s.get("notch2_f"), s.get("notch2_w"), s["bass"], s["treble"])
         if key == self.key: return
         self.key = key
         lo, hi = passband(s); self.edges = (lo, hi)
@@ -435,7 +436,7 @@ class RxDsp:
             self.mask = None
             self.hp = retune(self.hp, [biquad("hp", 8000, lo, q) for q in BUTTER4])
             self.lp = retune(self.lp, [biquad("lp", 8000, hi, q) for q in BUTTER8])
-        self.nf = retune(self.nf, [biquad("notch", 8000, s["notch_f"], max(0.5, s["notch_f"] / s["notch_w"]))] * 1) if s["notch"] else []
+        self.nf = retune(self.nf, [biquad("notch", 8000, s[k + "_f"], max(0.5, s[k + "_f"] / s[k + "_w"])) for k in ("notch", "notch2") if s.get(k)])
         eq = []
         if abs(s["bass"]) > 0.1: eq.append(biquad("lowshelf", 8000, 500, 0.7071, s["bass"]))
         if abs(s["treble"]) > 0.1: eq.append(biquad("highshelf", 8000, 1500, 0.7071, s["treble"]))

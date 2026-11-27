@@ -28,4 +28,5 @@ print "$ARCH" > .arch
 chmod +x ft897.sh "Start FT-897 Audio.command"
 system_profiler SPAudioDataType 2>/dev/null | grep -q "BlackHole 2ch" && say "BlackHole 2ch found" || {
   print -P "%F{yellow}NOTE:%f BlackHole 2ch not found. Install it, then RESTART the Mac:  brew install --cask blackhole-2ch"; }
+zsh "$HERE/install-link.sh" || print -P "%F{yellow}NOTE:%f the panel's Start voice client button could not be set up (run install-link.sh to try again)"
 say "Done. Start: double-click 'Start FT-897 Audio.command', or run $HERE/ft897.sh"
