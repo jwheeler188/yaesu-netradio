@@ -3,6 +3,8 @@ src=open("acctest.py").read().split("# ---- 1 other websites")[0]; exec(src)
 # radio would transmit (FT897_TX_RAW) is decoded with atest. Needs direwolf (gen_packets, atest) and the loopback card.
 import array, wave
 A="127.0.0.2"; B="127.0.0.3"; RAW=os.environ.get("FT897_TX_RAW","tx.raw"); RXF=os.environ.get("FT897_RX_FILE","rx.raw")
+def raw(c):                                          # straight to the test radio (rigctld), past the bridge
+    s=socket.create_connection(("127.0.0.1",14635),3); s.sendall(c.encode()+b"\n"); time.sleep(.15); r=s.recv(999).decode(); s.close(); return r.strip()
 def ap(**j): return req(A,"/api/aprs",j)
 def full(): return req(A,"/api/aprs")[1]
 def waitfor(fn, sec):
@@ -45,6 +47,9 @@ r=ap(op="start",stop_voice=True); w=waitfor(lambda: "talking to Dire Wolf" in op
 t("APRS starts: Dire Wolf + audio link, KISS connected",r[0]==200 and w is not None and x["aprs"]["on"] and all(x["aprs"]["alive"].values()),(r,x["aprs"],full()["log"]))
 t("radio on 144.390 FM",waitfor(lambda: st(A)["rig"].get("freq")==144390000 and st(A)["rig"].get("mode")=="FM",15) is not None,st(A)["rig"])
 t("Dire Wolf config: no network ports, fill-in digi with the alias",(lambda c:"KISSPORT 0" in c and "AGWPORT 0" in c and "DIGIPEAT 0 0 ^WIDE1-1$|^EMCOMM$ ^WIDE1-1$" in c and "12345" not in c)(open("aprs-run/direwolf.conf").read()))
+v0=raw("v"); o=cat("127.0.0.1",["V VFOB","+\\set_vfo VFOB"]); v1=raw("v")
+t("APRS running: VFO swaps from the Pi (Dire Wolf's Hamlib) answered but not done",o[0].strip()=="RPRT 0" and "RPRT 0" in o[1] and v0==v1,(v0,o,v1))
+o=cat(B,["V VFOB"]); v2=raw("v"); cat(B,["V "+v0]); t("... from another computer they still work",o[0].strip()=="RPRT 0" and v2!=v0,(o,v0,v2))
 t("Winlink refused while APRS runs",req(A,"/api/winlink",{"op":"set","call":"w5pl"})[0]==200 and req(A,"/api/winlink",{"op":"start"})[0]==409)
 # receive: a position, a Mic-E mobile, a status, an object, and a message for us
 p0=mark()

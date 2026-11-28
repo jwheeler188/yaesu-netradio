@@ -152,7 +152,8 @@ let UNIT = (() => { try { return localStorage.getItem("ynr.units") || "mi"; } ca
 const MI = 0.621371, dist = km => UNIT === "mi" ? (km * MI < 10 ? (km * MI).toFixed(1) : Math.round(km * MI)) + " mi" : km + " km";
 const spd = kmh => UNIT === "mi" ? Math.round(kmh * MI) + " mph" : Math.round(kmh) + " km/h", alt = ft => UNIT === "mi" ? ft + " ft" : Math.round(ft * 0.3048) + " m";
 const tmp = f => UNIT === "mi" ? Math.round(f) + "°F" : Math.round((f - 32) * 5 / 9) + "°C";
-function wxHtml(w, age) {
+const WXU = { DsVP: "Davis Vantage Pro", DsIP: "Davis", Dvs: "Davis", RSW: "Radio Shack", HKT: "Heathkit", PIC: "PIC", "U-II": "Ultimeter II", U2R: "Ultimeter", U2k: "Ultimeter 500", U2kr: "Ultimeter", U5: "Ultimeter 500", Upkm: "Ultimeter", Davis: "Davis" };
+function wxHtml(w, age, unit) {
   if (!w) return "";
   const card = d => ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(d / 22.5) % 16];
   const ws = v => UNIT === "mi" ? Math.round(v) + " mph" : Math.round(v * 1.609) + " km/h", rain = v => UNIT === "mi" ? v.toFixed(2) + " in" : (v * 25.4).toFixed(1) + " mm";
@@ -165,7 +166,7 @@ function wxHtml(w, age) {
   if (R.length) L.push("rain " + R.join(", "));
   if (w.snow_in != null) L.push("snow " + (UNIT === "mi" ? w.snow_in + " in" : Math.round(w.snow_in * 2.54) + " cm"));
   if (w.lum_wm2 != null) L.push(w.lum_wm2 + " W/m² sun");
-  return L.length ? `<div style="margin:4px 0;padding:4px 6px;border-left:3px solid var(--accent)">${L.join(" · ")}${age != null ? `<div class="small">weather ${ago(age)} ago</div>` : ""}</div>` : "";
+  return L.length ? `<div style="margin:4px 0;padding:4px 6px;border-left:3px solid var(--accent)">${L.join(" · ")}${age != null ? `<div class="small">weather ${ago(age)} ago${unit ? " · " + esc(WXU[unit] || unit) + " station" : ""}</div>` : ""}</div>` : "";
 }
 const ago = s => s < 60 ? s + " s" : s < 3600 ? Math.floor(s / 60) + " min" : Math.floor(s / 3600) + " h";
 // ---- symbols: aprs-symbols sheets, 16 x 6 of 24 px; table "/" = sheet 0, "\" and overlays = sheet 1, overlay characters = sheet 2
@@ -221,7 +222,7 @@ function icon(s, me) {
 }
 function popup(s) {
   const src = s.rf ? (s.path ? "heard on the radio via " + esc(s.path) : "heard on the radio, direct") : "<span style='color:var(--is)'>from the internet (APRS-IS), not heard on the radio</span>";
-  return `<div class="lpop"><b>${esc(s.call)}</b> ${esc(SYMN[s.sym] || "")}${s.obj ? " · object by " + esc(s.by) : ""}${wxHtml(s.wx, s.wx_t ? Math.max(0, Math.round(J.now - s.wx_t)) : null)}${s.comment || s.text ? "<div>" + esc(s.comment || s.text) + "</div>" : ""}` +
+  return `<div class="lpop"><b>${esc(s.call)}</b> ${esc(SYMN[s.sym] || "")}${s.obj ? " · object by " + esc(s.by) : ""}${wxHtml(s.wx, s.wx_t ? Math.max(0, Math.round(J.now - s.wx_t)) : null, s.wx_unit)}${s.comment || s.text ? "<div>" + esc(s.comment || s.text) + "</div>" : ""}` +
     `<div class="small">${s.km != null ? dist(s.km) + ", " + s.brg + "° · " : ""}${ago(s.age)} ago · ${src}${s.speed ? " · " + spd(s.speed) : ""}${s.alt_ft != null ? " · " + alt(s.alt_ft) : ""}</div>` +
     (s.sym_bad ? `<div class="small" style="color:var(--warn)">Its symbol is not valid ("${esc(s.sym_bad)}"): the station's radio sends a symbol table APRS doesn't allow.</div>` : "") +
     `<div style="margin-top:5px"><button onclick="msgTo('${esc(s.obj ? s.by : s.call)}')">Message</button></div></div>`;

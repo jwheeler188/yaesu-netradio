@@ -181,7 +181,21 @@ def parse(p):
     except Exception: q = dict(p); q["kind"] = "other"; return q
     c = q.get("comment") or ""
     m = re.search(r"/A=(-?\d{6})", c)                              # altitude in feet, inside the comment
-    if m: q["alt_ft"] = int(m[1]); q["comment"] = (c[:m.start()] + c[m.end():]).strip()
+    if m: q["alt_ft"] = int(m[1]); c = c[:m.start()] + c[m.end():]
+    m = re.search(r"!([Ww])(.)(.)!", c)                             # DAO: extra position precision (!W12! digits, !w..! base 91)
+    if m and "lat" in q:
+        if m[1] == "W" and m[2].isdigit() and m[3].isdigit(): dl, do = int(m[2]) * .001, int(m[3]) * .001
+        elif m[1] == "w" and 33 <= ord(m[2]) <= 123 and 33 <= ord(m[3]) <= 123: dl, do = (ord(m[2]) - 33) / 91 * .01, (ord(m[3]) - 33) / 91 * .01
+        else: dl = do = None
+        if dl is not None:
+            q["lat"] += (dl if q["lat"] >= 0 else -dl) / 60; q["lon"] += (do if q["lon"] >= 0 else -do) / 60; c = c[:m.start()] + c[m.end():]
+    m = re.search(r"\|([!-{]{2}){2,7}\|", c)                         # base-91 telemetry in the comment (|ss1122...|): not text
+    if m: q["telemetry"] = m[0]; c = c[:m.start()] + c[m.end():]
+    if q.get("kind") == "weather":                                  # the weather station's type code at the end (".DsVP", "eMB", "wDavis")
+        m = re.fullmatch(r"\s*([a-zA-Z.])([A-Za-z]{2,4})\s*", c)
+        if m: q["wx_unit"] = m[2]; c = ""
+    if q.get("course") is not None and not 0 <= q["course"] <= 360: q.pop("course", None); q.pop("speed", None)    # damaged on the way
+    q["comment"] = re.sub(r"\s{2,}", " ", c).strip()
     if "sym" in q and (q.get("table") or "/") not in TABLES and not (q.get("table") or "").islower():
         q["sym_bad"] = (q.get("table") or "") + q["sym"]; q.pop("sym"); q.pop("table", None)
     return q

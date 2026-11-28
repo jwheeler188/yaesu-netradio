@@ -37,7 +37,7 @@ from ft897_radio import parse_raw
 cfg = acc.cfg
 
 VERSION = "2026.11.27"                     # bridge build (logs, client checks)
-RELEASE = "1.0.0-beta.3"                    # yaesu-netradio release, shown on the panel
+RELEASE = "1.0.0-beta.4"                    # yaesu-netradio release, shown on the panel
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
@@ -749,6 +749,11 @@ def cat_client(c, addr):
                 v = ptt_value(text)
                 if cat_refuse(text):
                     log(f"CAT client {name}: refused {text.strip()[:60]!r}"); c.sendall(b"RPRT -11\n"); continue
+                if ip == "127.0.0.1" and ap_running() and tok0(text) in ("V", "\\set_vfo"):
+                    # Dire Wolf's Hamlib flips VFO A/B at start to read both frequencies; on the FT-897 that is a swap, which can leave the
+                    # radio on the other VFO. Dire Wolf only needs PTT: say yes and leave the radio alone.
+                    v2 = text.strip().split()[-1] if len(text.split()) > 1 else ""
+                    c.sendall((f"set_vfo: {v2}\n".encode() if text.strip()[:1] in "+;|," else b"") + b"RPRT 0\n"); continue
                 if RADIO.key == "ft891" and not a.dummy and re.fullmatch(r"[+;|,]?(S|\\set_split_vfo)( currVFO| VFO[AB])? 0( \w+)?", text.strip()):      # Hamlib 4.5.5 can't: RPRT -12
                     ok = radio.line("S 0 VFOA")[0] == 0
                     c.sendall((b"set_split_vfo: 0 VFOA\n" if text.strip()[:1] in "+;|," else b"") + (b"RPRT 0\n" if ok else b"RPRT -9\n")); continue
@@ -1275,6 +1280,7 @@ def ap_station(p, src):
             tr = s.setdefault("track", []); pt = [round(p["lat"], 5), round(p["lon"], 5), int(now)]
             if not tr or abs(tr[-1][0] - pt[0]) + abs(tr[-1][1] - pt[1]) > 0.0003: tr.append(pt); del tr[:-30]
         if p.get("wx"): s["wx"] = p["wx"]; s["wx_t"] = int(now)
+        if p.get("wx_unit"): s["wx_unit"] = p["wx_unit"]
         for k in ("lat", "lon", "comment", "speed", "course", "kind", "text", "alt_ft"):
             if k in p and p[k] not in (None, ""): s[k] = p[k]
         if "sym" in p: s["sym"] = (p.get("table") or "/") + p["sym"]; s.pop("sym_bad", None)

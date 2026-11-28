@@ -153,6 +153,8 @@ dialog label { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-
 .lmeters.idle .tx, .lmeters.tx .rx { opacity: .35; }
 @media (max-width: 600px) { .rigtop { grid-template-columns: 1fr; } .pttbox #ptt { padding: 18px; } .lmeters { grid-template-columns: 1fr 1fr; } }
 .vcrow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 6px; }
+.vcmode { display: inline-flex; align-items: center; gap: 6px; padding-left: 12px; border-left: 1px solid var(--edge); font-size: 13px; }
+.vcmode b { color: var(--dim); font-weight: 600; } .vcrow button.running { border-color: var(--good); color: var(--good); }
 .vcrow a.btn, .vcrow button { padding: 3px 10px; font-size: 13px; border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); }
 .vsep { width: 1px; align-self: stretch; background: var(--edge); }
 /* control deck: tune, band, mode and filter side by side */
@@ -247,7 +249,9 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     <div class="hint" id="lsbhint" hidden></div>
     <div class="vcrow"><span class="small" id="pttinfo">Hold to talk. Needs the audio client running (Start FT-897 Voice).</span>
       <a class="btn" id="vcstart" href="ft897voice://start" hidden title="Starts “Start FT-897 Voice” on this computer. Nothing happens? Run the installer once more (macOS/install.sh, or windows\install-link.bat), which sets this link up.">▶ Start voice client</a>
-      <button id="vcstop" hidden title="Ends the voice client on this computer (its window stays open)">■ Stop voice client</button></div>
+      <button id="vcstop" hidden title="Ends the voice client on this computer (its window stays open)">■ Stop voice client</button>
+      <span class="vcmode" title="APRS on the Pi (Dire Wolf): has the radio to itself while it runs"><b>APRS</b><button id="vcaprs">▶ Start</button><a class="btn" id="vcaprsopen" href="/aprs" target="_blank" rel="noopener">🗺 APRS page</a></span>
+      <span class="vcmode" title="Winlink email on the Pi (xara + Pat): has the radio to itself while it runs"><b>Winlink</b><button id="vcwl">▶ Start</button><a class="btn" id="vcwlopen" target="_blank" rel="noopener" hidden>✉ Mailbox</a></span></div>
   </div>
 
   <div class="card">
@@ -856,7 +860,17 @@ $("apgo").onclick = () => {
   post("/api/aprs", { op: "start" });
 };
 $("apstop").onclick = () => post("/api/aprs", { op: "stop" });
+$("vcaprs").onclick = () => { if (S && S.aprs && S.aprs.on) $("apstop").click(); else { if (S && S.aprs && !S.aprs.call) { tab("aprs"); return msg("set your call sign on the APRS page first"); } $("apgo").click(); } };
+$("vcwl").onclick = () => { if (S && S.winlink && S.winlink.on) $("wlstop").click(); else { if (S && S.winlink && (!S.winlink.call || S.winlink.missing)) { tab("wl"); return msg(S.winlink.missing || "enter your call sign in the Winlink tab first"); } $("wlgo").click(); } };
+function modeRow() {
+  const a = S && S.aprs, w = S && S.winlink; if (!a || !w) return;
+  $("vcaprs").textContent = a.on ? "■ Stop" : "▶ Start"; $("vcaprs").classList.toggle("running", a.on); $("vcaprs").title = a.on ? `APRS running as ${a.call} · ${a.heard} stations` + (a.unread ? ` · ${a.unread} unread` : "") : "Start APRS";
+  $("vcaprsopen").textContent = "🗺 APRS page" + (a.unread ? ` (${a.unread})` : "");
+  $("vcwl").textContent = w.on ? "■ Stop" : "▶ Start"; $("vcwl").classList.toggle("running", w.on);
+  $("vcwlopen").hidden = !w.on; $("vcwlopen").href = location.protocol + "//" + location.hostname + ":" + w.pat_port + "/";
+}
 function apRender() {
+  modeRow();
   const a = S && S.aprs; if (!a) return;
   $("apstat").textContent = a.missing ? "Not ready: " + a.missing : a.on ? `APRS is running as ${a.call}` + (a.by ? `, started by ${a.by}` : "") + ` · ${a.heard} stations` + (a.unread ? ` · ${a.unread} unread message${a.unread > 1 ? "s" : ""}` : "") + (a.net === false ? " · no internet" : "")
     : a.call ? "APRS is off." : "APRS is off. Set your call sign on the APRS page first.";
