@@ -1,6 +1,6 @@
 # yaesu-netradio: W5PL FT-897D / FT-891 network radio
 
-<p align="center"><img src="screenshots/1-panel-20m.png" alt="The web panel" width="720"><br><em>The web panel: waterfall, scan, the radio display with meters and PTT, then Tune, Band, Mode and Filter. Also: CW keyer, Winlink email, repeaters and favorites.</em></p>
+<p align="center"><img src="screenshots/1-panel-20m.png" alt="The web panel" width="720"><br><em>The web panel: waterfall, scan, the radio display with meters and PTT, the row of what is running (Voice, APRS, Winlink with its link, Stop all), then Tune, Band, Mode and Filter. Also: CW keyer, Winlink email, APRS, repeaters and favorites.</em></p>
 
 Runs a Yaesu FT-897D (or FT-891, see the end) with a Digirig from a Raspberry Pi, so WSJT-X / VARA / Pat on a Mac
 **or** Windows laptop can use it from anywhere in the house, or from away over a VPN, and anyone can operate voice
@@ -151,7 +151,7 @@ browser, connect to a gateway, Pat tunes the radio. xara reaches the radio throu
 and CAT ports, so every lock and safety check applies. xara's source comes with this project (`third_party/xara`);
 `./install.sh` offers to build it, or run `pi/winlink-install.sh`. Manual section 3.6.
 
-**APRS on the Pi** (APRS tab, beta): Dire Wolf is the modem, fill-in digipeater (out of the box) and optional iGate, keying the
+**APRS on the Pi** (beta, its own page): Dire Wolf is the modem, fill-in digipeater (out of the box) and optional iGate, keying the
 radio through the bridge so every lock applies; the panel has the station list with distance and bearing, messaging with acks and
 retries, bulletins, beacons and the packet log. Stations from the internet (APRS-IS) can be shown too, always outlined in blue; the
 internet features switch off by themselves when there is no internet. Digipeater and iGate settings are on the administration page.
@@ -250,8 +250,12 @@ still transmitting after it stopped answering is un-keyed at once.
 
 GPL-3.0 (see `LICENSE`), by W5PL. Uses [Hamlib](https://hamlib.github.io) (`rigctld`, run as a separate program),
 [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/) and [pyserial](https://github.com/pyserial/pyserial), and
-includes [RNNoise](https://github.com/xiph/rnnoise) 0.2 (BSD licence, `client/rnnoise/COPYING`) and xara 0.1.3 by x0rro, a
-VARA-compatible modem (MIT licence, `third_party/xara/LICENSE`, unmodified, with the Rust libraries it builds with; see
-`third_party/xara/ABOUT-THIS-COPY.md`). Thanks to x0rro for xara. Repeater data, if you
+includes [RNNoise](https://github.com/xiph/rnnoise) 0.2 (BSD licence, `client/rnnoise/COPYING`) and xara by x0rro, a
+VARA-compatible modem (MIT licence, `third_party/xara/LICENSE`, with the Rust libraries it builds with; see
+`third_party/xara/ABOUT-THIS-COPY.md`). Our copy is 0.1.4: x0rro's 0.1.3 with a fix to its FM busy-channel detection
+(an open squelch's hiss no longer reads as a busy channel; also as a patch anyone can apply to 0.1.3:
+`third_party/xara-0.1.4-fm-busy.patch`) and its higher ("registered") speed levels on by default. It also includes ardopcf 1.0.4.1.3 by Rick Muething KN6KB, John Wiseman G8BPQ
+and Peter LaRue AI7YN, the ARDOP modem (MIT licence, `third_party/ardopcf/LICENSE`, unmodified; see
+`third_party/ardopcf/ABOUT-THIS-COPY.md`). Thanks to its authors. Thanks to x0rro for xara. Repeater data, if you
 import it, comes from your own RepeaterBook.com export and stays on your Pi. Not affiliated with Yaesu or Digirig.
 

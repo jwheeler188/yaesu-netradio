@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# W5PL FT-897D network radio - set up Winlink on the Pi: xara (VARA HF modem) and Pat (mail); also Dire Wolf for APRS.
+# W5PL FT-897D network radio - set up Winlink on the Pi: xara (VARA modem), ardopcf (ARDOP modem) and Pat (mail); also Dire
+# Wolf for APRS and packet.
 #   pi/winlink-install.sh       builds the copy of xara in third_party/xara (no internet needed for that part)
 #   A newer xara source archive (xara*.zip, xara*.tar.gz or xara*.tgz) or Pat's own package (pat_*_linux_arm64.deb from
 #   github.com/la5nta/pat/releases) put in winlink/ next to pi/ is used instead. ./install.sh asks whether to run this.
 #   Steps already done are skipped, so it is safe to run again.
+#   Builds ardopcf (third_party/ardopcf, plain C: make) as ~/.local/bin/ardopcf.
 #   Builds xara with Rust (1.85 or newer; offers to install it with rustup if missing), installs it as ~/.local/bin/xara,
 #   adds the loopback sound card (snd-aloop) at every boot, and installs Pat.
 set -e
@@ -37,6 +39,21 @@ if [[ ! -f /etc/modprobe.d/snd-aloop.conf || ! -f /etc/modules-load.d/snd-aloop.
   echo "snd-aloop" | sudo tee /etc/modules-load.d/snd-aloop.conf >/dev/null
 fi
 [[ -e /proc/asound/Loopback ]] || sudo modprobe snd-aloop
+
+# ---- ardopcf, the ARDOP modem (bundled source, C; no internet needed)
+AD="$(cd "$HERE/.." && pwd)/third_party/ardopcf"
+if [[ -f "$AD/Makefile" ]]; then
+  want=$(sed -n 's/^const char ProductVersion\[\] *= *"\([^"]*\)".*/\1/p' "$AD/src/common/version.h" 2>/dev/null | head -1)
+  have=$("$HOME/.local/bin/ardopcf" --help 2>&1 | sed -n 's/^ardopcf Version \([^ ]*\).*/\1/p' | head -1 || true)
+  if [[ -n "$want" && "$have" == "$want" ]]; then say "ardopcf $have is installed already"
+  else
+    say "Building ardopcf${want:+ $want} (about a minute)"
+    AB="$HOME/.cache/ft897-ardopcf-build"; rm -rf "$AB"; cp -R "$AD" "$AB"
+    (cd "$AB" && make -j3 >/dev/null) || die "ardopcf did not build (see above)"
+    mkdir -p "$HOME/.local/bin"; install -m 755 "$AB/ardopcf" "$HOME/.local/bin/ardopcf"; rm -rf "$AB"
+    say "Installed ardopcf as ~/.local/bin/ardopcf"
+  fi
+fi
 [[ -n "$SRC" ]] || { say "Winlink: Pat and the loopback card are ready; no xara source in $DROP"; exit 0; }
 
 # ---- Rust
@@ -84,7 +101,7 @@ ROOT=$(dirname "$(find "$B" -maxdepth 4 -path '*/crates/xara/Cargo.toml' | head 
 ROOT=$(cd "$ROOT/../.." && pwd)
 OFF=(); [[ -d "$ROOT/vendor" && -f "$ROOT/.cargo/config.toml" ]] && OFF=(--offline --frozen)
 say "Building xara (a few minutes on a Pi 4)${OFF:+, offline from the bundled crates}"
-(cd "$ROOT" && "$CARGO" build --release "${OFF[@]}" -p xara --no-default-features --features alsa)
+(cd "$ROOT" && "$CARGO" build --release "${OFF[@]}" -p xara --no-default-features --features alsa,registered)
 mkdir -p "$HOME/.local/bin"; install -m 755 "$ROOT/target/release/xara" "$HOME/.local/bin/xara"
 rm -rf "$B"
 say "Installed $("$HOME/.local/bin/xara" --version) as ~/.local/bin/xara"

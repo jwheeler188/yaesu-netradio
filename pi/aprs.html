@@ -129,6 +129,8 @@ pre.pk .is { color: var(--is); } pre.pk .tx { color: var(--warn); } pre.pk .echo
       <div class="f"><label>Path</label><select id="s-path"><option value="WIDE1-1,WIDE2-1">WIDE1-1,WIDE2-1 (mobile / portable)</option><option value="WIDE2-1">WIDE2-1 (fixed station)</option><option value="WIDE1-1">WIDE1-1</option><option value="">none (direct only)</option></select></div>
       <div class="f"><label>Frequency</label><select id="s-freq"><option value="144390000">144.390 (North America)</option><option value="144800000">144.800 (Europe)</option><option value="145175000">145.175 (Australia)</option><option value="144640000">144.640 (China)</option><option value="144660000">144.660 (Japan)</option></select></div>
       <div class="f"><label>Internet stations</label><span><label style="color:var(--text)"><input type="checkbox" id="s-is" style="width:auto"> show within</label> <select id="s-km" style="width:auto"></select></span></div>
+      <div class="f"><label>Transmit level</label><select id="s-drive" title="Dire Wolf always plays at full scale: this turns its audio down before the radio, so the FM deviation isn't too high. Lower it if stations can't decode you cleanly; raise it if nobody hears you."><option value="0">full scale (0 dB)</option><option value="-3">−3 dB</option><option value="-6">−6 dB</option><option value="-9">−9 dB</option><option value="-12">−12 dB</option><option value="-15">−15 dB</option><option value="-18">−18 dB</option><option value="-24">−24 dB</option></select></div>
+      <div class="f"><label>Forget stations</label><select id="s-keep" title="Stations heard on the radio are remembered when APRS or the Pi restarts; ones not heard for this long are cleared out"><option value="1">not heard for 1 hour</option><option value="3">not heard for 3 hours</option><option value="6">not heard for 6 hours</option><option value="12">not heard for 12 hours</option><option value="24">not heard for 1 day</option><option value="72">not heard for 3 days</option><option value="168">not heard for 1 week</option><option value="720">not heard for 30 days</option><option value="0">never</option></select></div>
       <div class="f"><label>Units</label><select id="s-units"><option value="mi">miles, mph, feet</option><option value="km">kilometres, km/h, metres</option></select></div>
       <p class="small">Changes save at once; ones that change what is sent (call, position, beacon, path, frequency) apply when APRS is next started.
         The digipeater and iGate are set on the <a href="/admin">administration page</a>. Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (needs internet for now; offline maps are coming).
@@ -288,7 +290,7 @@ function drawPk() {
 function drawSettings() {
   if (Date.now() - setAt < 1500) return; const s = J.settings, a = document.activeElement;
   for (const [id, v] of [["s-call", s.call], ["s-comment", s.comment], ["s-lat", s.lat ?? ""], ["s-lon", s.lon ?? ""]]) if (a !== $(id)) $(id).value = v;
-  $("s-sym").value = s.sym; $("s-beacon").value = String(s.beacon); $("s-path").value = s.path; $("s-freq").value = String(s.freq); $("s-is").checked = s.show_is;
+  $("s-sym").value = s.sym; $("s-beacon").value = String(s.beacon); $("s-path").value = s.path; $("s-freq").value = String(s.freq); $("s-is").checked = s.show_is; $("s-keep").value = String(s.keep_h); { const el = $("s-drive"); if (![...el.options].some(o => +o.value === s.drive)) { const o = document.createElement("option"); o.value = s.drive; o.textContent = s.drive + " dB"; el.appendChild(o); } el.value = String(s.drive); }
   { const el = $("s-km"); if (![...el.options].some(o => +o.value === s.is_km)) { const o = document.createElement("option"); o.value = s.is_km; o.textContent = dist(s.is_km); el.appendChild(o); } el.value = String(s.is_km); }
 }
 const set = o => { setAt = Date.now(); post({ op: "set", ...o }).then(ok => { if (ok && !lastReply.note) msg("saved"); poll(); }); };
@@ -302,6 +304,8 @@ $("s-path").onchange = () => set({ path: $("s-path").value });
 $("s-freq").onchange = () => set({ freq: +$("s-freq").value });
 $("s-is").onchange = () => set({ show_is: $("s-is").checked });
 $("s-km").onchange = () => set({ is_km: +$("s-km").value });
+$("s-keep").onchange = () => set({ keep_h: +$("s-keep").value });
+$("s-drive").onchange = () => set({ drive: +$("s-drive").value });
 // ---- offline maps (Maps tab)
 const areaLayer = L.layerGroup().addTo(map);
 async function postTo(path, body) {

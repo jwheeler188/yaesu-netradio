@@ -36,8 +36,8 @@ import ft897_radio as radios
 from ft897_radio import parse_raw
 cfg = acc.cfg
 
-VERSION = "2026.11.27"                     # bridge build (logs, client checks)
-RELEASE = "1.0.0-beta.4"                    # yaesu-netradio release, shown on the panel
+VERSION = "2026.11.28"                     # bridge build (logs, client checks)
+RELEASE = "1.0.0-beta.5"                    # yaesu-netradio release, shown on the panel
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 p.add_argument("--cat-port", type=int, default=4533, help="TCP port for CAT (Hamlib NET rigctl)")
 p.add_argument("--audio-port", type=int, default=4534, help="TCP port for ft897-audio.py")
@@ -59,6 +59,7 @@ p.add_argument("--stall", type=float, default=1.5, help="un-key if TX audio from
 p.add_argument("--no-audio-check", action="store_true", help="allow keying with no laptop audio link (e.g. CW keyer "
                "apps); the disconnect and --tx-timeout checks still apply")
 p.add_argument("--xara", default="~/.local/bin/xara", help="xara, the VARA-compatible modem for Winlink on the Pi")
+p.add_argument("--ardop", default="~/.local/bin/ardopcf", help="ardopcf, the ARDOP modem for Winlink on the Pi")
 p.add_argument("--pat", default="", help="Pat, the Winlink mail program (default: pat, or pat-winlink as Ubuntu's own package names it)")
 p.add_argument("--pat-port", type=int, default=8092, help="TCP port for Pat's mailbox web page while Winlink runs")
 p.add_argument("--dummy", action="store_true", help="test mode: Hamlib dummy rig, ALSA null audio, no radio needed")
@@ -749,7 +750,7 @@ def cat_client(c, addr):
                 v = ptt_value(text)
                 if cat_refuse(text):
                     log(f"CAT client {name}: refused {text.strip()[:60]!r}"); c.sendall(b"RPRT -11\n"); continue
-                if ip == "127.0.0.1" and ap_running() and tok0(text) in ("V", "\\set_vfo"):
+                if ip == "127.0.0.1" and (ap_running() or wl_dw_running()) and tok0(text) in ("V", "\\set_vfo"):
                     # Dire Wolf's Hamlib flips VFO A/B at start to read both frequencies; on the FT-897 that is a swap, which can leave the
                     # radio on the other VFO. Dire Wolf only needs PTT: say yes and leave the radio alone.
                     v2 = text.strip().split()[-1] if len(text.split()) > 1 else ""
@@ -1026,7 +1027,13 @@ def audio_server():
 
 # ---------------------------------------------------------------- Winlink on the Pi: xara (VARA-compatible modem) + Pat (mail)
 WL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "winlink.json")
-WLDEF = {"call": "", "locator": "", "bw": 2300, "drive": -12.0}      # drive: as for WSJT-X, no ALC
+WLDEF = {"call": "", "locator": "", "bw": 2300, "drive": -12.0, "link": "hf", "fm": "wide"}   # drive: as for WSJT-X, no ALC
+# link: "hf" VARA HF (xara, radio in DIG), "fm" VARA FM (xara, radio in FM), "packet" 1200 baud AX.25 (Dire Wolf, radio in FM),
+# "telnet" Pat alone over the internet (no radio: the voice client and APRS are left alone)
+WL_LINKS = {"hf": "VARA HF", "fm": "VARA FM", "packet": "packet (1200 baud)", "ardop": "ARDOP (HF)", "telnet": "Telnet (internet)"}
+# "ardop": ardopcf (radio in DIG); it asks Pat to key the radio, and Pat does that through the bridge's CAT port
+WL_ARDOP = 18515 if a.dummy else 8515             # ardopcf's host port (its data port is the next one), 127.0.0.1 only: localonly.c
+WL_AGW = 18010 if a.dummy else 8000                 # Dire Wolf's AGW port for Pat (127.0.0.1 only: see localonly.c)
 wlset = dict(WLDEF)
 wl = {"procs": {}, "by": None, "since": 0.0, "log": collections.deque(maxlen=60), "err": "", "stopping": False}
 wl_lock = threading.Lock()
@@ -1042,6 +1049,8 @@ def wl_clean(j):
     g = str(j.get("locator", wlset["locator"]) or "").strip()
     if re.fullmatch(r"[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?", g) or g == "": wlset["locator"] = g[:2].upper() + g[2:4] + g[4:].lower()
     if j.get("bw") in (500, 2300, 2750): wlset["bw"] = j["bw"]
+    if j.get("link") in WL_LINKS: wlset["link"] = j["link"]
+    if j.get("fm") in ("narrow", "wide"): wlset["fm"] = j["fm"]
     if isinstance(j.get("drive"), (int, float)) and not isinstance(j.get("drive"), bool): wlset["drive"] = float(max(-30, min(0, j["drive"])))
 def wl_save():
     try:
@@ -1053,24 +1062,93 @@ def wl_xara(): return os.path.expanduser(a.xara)
 XARA_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xara-state") if a.dummy else os.path.expanduser("~/.local/state/xara")
 def wl_missing():
     """What is not installed for Winlink on the Pi ("" = all there)."""
-    if not os.path.isfile(wl_xara()) or not os.access(wl_xara(), os.X_OK): return f"xara is not installed ({a.xara}): see the manual, Winlink on the Pi"
+    L = wlset["link"]
     if not shutil.which(pat_bin()): return "Pat is not installed (sudo apt install pat)"
+    if L == "telnet": return ""
+    if L in ("hf", "fm") and (not os.path.isfile(wl_xara()) or not os.access(wl_xara(), os.X_OK)): return f"xara is not installed ({a.xara}): see the manual, Winlink on the Pi"
+    ad = os.path.expanduser(a.ardop)
+    if L == "ardop" and not (os.path.isfile(ad) and os.access(ad, os.X_OK)): return f"ardopcf is not installed ({a.ardop}): run pi/winlink-install.sh again"
+    if L == "ardop" and not os.path.exists(SHIM) and not shutil.which("cc"): return "a C compiler is needed once for ARDOP (sudo apt install build-essential)"
+    if wlset["link"] == "packet":
+        if not shutil.which("direwolf"): return "Dire Wolf is not installed (sudo apt install direwolf)"
+        if not os.path.exists(SHIM) and not shutil.which("cc"): return "a C compiler is needed once for packet (sudo apt install build-essential)"
     if not a.dummy and not os.path.exists("/proc/asound/Loopback"): return "the loopback sound card is not there (sudo modprobe snd-aloop; see the manual)"
     return ""
 def wl_running():
     with wl_lock: return bool(wl["procs"])
+def wl_radio():
+    """Winlink runs and has the radio (every link but Telnet)."""
+    return wl_running() and wlset["link"] != "telnet"
+def wl_ardop_running():
+    with wl_lock: return "ardop" in wl["procs"]
+def wl_dw_running():
+    """Dire Wolf runs for Winlink over packet (it asks for VFO changes like APRS's: see the guard in cat_client)."""
+    with wl_lock: return "direwolf" in wl["procs"]
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHIM = os.path.join(HERE, "localonly.so") if a.dummy else os.path.expanduser("~/.local/lib/yaesu-netradio/localonly.so")
+def wl_shim():
+    """Builds localonly.so (keeps Dire Wolf's AGW port on this Pi) when missing or older than its source. -> "" or the error"""
+    src = os.path.join(HERE, "localonly.c")
+    try:
+        if os.path.exists(SHIM) and os.path.getmtime(SHIM) >= os.path.getmtime(src): return ""
+        os.makedirs(os.path.dirname(SHIM), exist_ok=True)
+        r = subprocess.run(["cc", "-shared", "-fPIC", "-O2", "-o", SHIM + ".tmp", src, "-ldl"], capture_output=True, text=True, timeout=60)
+        if r.returncode: return "could not build localonly.so: " + (r.stderr.strip().splitlines() or ["?"])[-1][:150]
+        os.replace(SHIM + ".tmp", SHIM); log("built " + SHIM); return ""
+    except (OSError, subprocess.SubprocessError) as e: return f"could not build localonly.so: {e}"
+def tcp_listeners(port, states=("0A",)):
+    """Addresses listening on this TCP port, from /proc/net/tcp and tcp6 (e.g. ["127.0.0.1"], or ["0.0.0.0"] = every network).
+    states: the socket states to count (0A listening, 01 connected)."""
+    out = []
+    for fn, v6 in (("/proc/net/tcp", False), ("/proc/net/tcp6", True)):
+        try:
+            for line in open(fn).read().splitlines()[1:]:
+                f = line.split(); ad, pt = f[1].split(":")
+                if int(pt, 16) != port or f[3] not in states: continue
+                b = bytes.fromhex(ad)
+                if v6: b = b"".join(b[i:i + 4][::-1] for i in range(0, 16, 4)); out.append(socket.inet_ntop(socket.AF_INET6, b))
+                else: out.append(socket.inet_ntop(socket.AF_INET, b[::-1]))
+        except (OSError, ValueError, IndexError): pass
+    return out
+def wl_agw_check(running=None, port=None, what=None):
+    """A few seconds after Dire Wolf (or ardopcf) starts: its port for Pat must be open to this Pi only, or Winlink stops."""
+    running = running or wl_dw_running; port = port or WL_AGW; what = what or "Dire Wolf's AGW port"
+    for _ in range(8):
+        time.sleep(1)
+        if not running(): return
+        L = tcp_listeners(port)
+        if L:
+            bad = [x for x in L if x not in ("127.0.0.1", "::1")]
+            if bad: wl["err"] = f"{what} {port} was open to the network ({', '.join(bad)}): stopped"; log("Winlink: " + wl["err"]); wl_stop(wl["err"])
+            return
+def wl_dw_conf():
+    """Dire Wolf for Winlink over packet: a plain 1200 baud modem for Pat, no digipeater, no beacons, AGW for Pat on 127.0.0.1."""
+    return "\n".join(["ADEVICE plughw:Loopback,1,0 plughw:Loopback,0,1", "ARATE 48000", "ACHANNELS 1", "CHANNEL 0", f"MYCALL {wlset['call']}",
+                      "MODEM 1200", f"PTT RIG 2 localhost:{a.cat_port}", "TXDELAY 30", "TXTAIL 10", f"AGWPORT {WL_AGW}", "KISSPORT 0"]) + "\n"
+DW_PTT_TAIL = re.compile(r"Transmit timing error: PTT is on \d+ mSec too long")
+DW_PTT_NOTE = ("Dire Wolf's \"PTT is on ~150 mSec too long\" notices are hidden: the bridge keeps the radio keyed until the end of the "
+               "frame has left the sound buffer (about 0.15 s after Dire Wolf thinks it has), so the frame isn't cut off")
+def dw_line(t, seen):
+    """Dire Wolf's notice about the bridge's deliberate PTT tail: once, explained, instead of after every frame."""
+    if not DW_PTT_TAIL.search(t): return t
+    if seen[0]: return None
+    seen[0] = True; return DW_PTT_NOTE
 def wl_reader(name, pr):
+    seen = [False]
     for line in iter(pr.stdout.readline, b""):
         t = line.decode(errors="replace").rstrip()
         if "got a vara command I wasn't expecting" in t: continue       # Pat 0.15 doesn't know VARA's SN / BITRATE reports: harmless
+        if name == "direwolf": t = dw_line(t, seen) or ""
         if t: wl["log"].append(f"{time.strftime('%H:%M:%S')} {name}: {t[:200]}")
     rc = pr.wait()
     with wl_lock: mine = wl["procs"].get(name) is pr; stopping = wl["stopping"]
     if mine and not stopping:
         wl["err"] = f"{name} stopped (exit {rc}): see its log"; log(f"Winlink: {name} stopped (exit {rc}); stopping the rest")
         threading.Thread(target=wl_stop, args=(f"{name} stopped",), daemon=True).start()
+PAT_INNER = a.pat_port + 1                          # Pat's own web server, 127.0.0.1 only; the bridge serves --pat-port in front of it
 def wl_pat_config():
-    """Pat's settings for this Pi: VARA HF on xara, the radio through the bridge's CAT port, the web page on --pat-port.
+    """Pat's settings for this Pi: every link through the bridge's modems, the radio through the bridge's CAT port, its web page on
+    127.0.0.1 (the bridge passes it on at --pat-port and watches which link you pick).
     The Winlink password is never written here by the bridge: Pat asks for it, or you enter it in Pat."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pat-config.json") if a.dummy else os.path.expanduser("~/.config/pat/config.json")
     try:
@@ -1078,26 +1156,47 @@ def wl_pat_config():
     except (OSError, ValueError): c = {}
     if not isinstance(c, dict): c = {}
     c["mycall"] = wlset["call"]; c["locator"] = wlset["locator"] or c.get("locator", "")
-    c["http_addr"] = f"{a.bind}:{a.pat_port}"
+    c["http_addr"] = f"127.0.0.1:{PAT_INNER}"
     c.setdefault("service_codes", ["PUBLIC"])
     rigs = c.get("hamlib_rigs") if isinstance(c.get("hamlib_rigs"), dict) else {}
     rigs["ft897"] = {"address": f"127.0.0.1:{a.cat_port}", "network": "tcp"}; c["hamlib_rigs"] = rigs
     v = c.get("varahf") if isinstance(c.get("varahf"), dict) else {}
     v.update({"addr": "127.0.0.1:8300", "bandwidth": wlset["bw"], "rig": "ft897", "ptt_ctrl": False}); c["varahf"] = v
+    v = c.get("varafm") if isinstance(c.get("varafm"), dict) else {}
+    v.update({"addr": "127.0.0.1:8300", "rig": "ft897", "ptt_ctrl": False}); c["varafm"] = v
+    x = c.get("ax25") if isinstance(c.get("ax25"), dict) else {}
+    x.update({"engine": "agwpe", "rig": "ft897"}); c["ax25"] = x
+    c["agwpe"] = {"addr": f"127.0.0.1:{WL_AGW}", "radio_port": 0}
+    x = c.get("ardop") if isinstance(c.get("ardop"), dict) else {}
+    x.setdefault("arq_bandwidth", {"Forced": False, "Max": 2000}); x.setdefault("beacon_interval", 0); x.setdefault("cwid_enabled", True)
+    x.update({"addr": f"127.0.0.1:{WL_ARDOP}", "rig": "ft897", "ptt_ctrl": True}); c["ardop"] = x     # ardopcf has no PTT here: Pat keys, through the bridge
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w") as f: json.dump(c, f, indent=2)
     os.chmod(path + ".tmp", 0o600); os.replace(path + ".tmp", path)
     return path
-def wl_start(ip, stop_voice=False):
-    if wl_running(): return 0, ""
-    if ap_running(): return 1, "stop APRS first: both need the audio link"
-    why = wl_missing()
-    if why: return 1, why
-    if not wlset["call"]: return 1, "enter your call sign first"
-    if st["keyed"]: return 1, "transmitting"
-    with lock: aud = st["audio"]; voice = bool(aud is not None and (st.get("client") or {}).get("voice") is not False)
-    if aud is not None:
-        if not stop_voice: return 1, "the voice client is connected: Winlink needs the audio link (stop the voice client first)"
+def wl_spawn(name, cmd, env=None):
+    """(wl_lock held) one Winlink process, logged into the tab. -> "" or the error"""
+    try: pr = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, env=env, cwd=XARA_STATE)
+    except OSError as e: return f"{name} could not start: {e}"
+    wl["procs"][name] = pr; threading.Thread(target=wl_reader, args=(name, pr), daemon=True).start(); return ""
+def wl_retire(names):
+    """Stops these Winlink processes on purpose (a link change): the rest keep running."""
+    with wl_lock: procs = [(n, wl["procs"].pop(n)) for n in names if n in wl["procs"]]
+    for n, pr in procs:
+        try: pr.terminate()
+        except OSError: pass
+    for n, pr in procs:
+        try: pr.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            try: pr.kill()
+            except OSError: pass
+def wl_take_radio(stop_voice):
+    """The radio for a Winlink link: no APRS, the voice client off (if allowed), LSB voice / CW keyer left. -> "" or why not"""
+    if ap_running(): return "stop APRS first: both need the audio link"
+    if st["keyed"]: return "transmitting"
+    with lock: aud = st["audio"]; aip = st.get("audio_ip"); voice = bool(aud is not None and (st.get("client") or {}).get("voice") is not False)
+    if aud is not None and aip != "127.0.0.1":
+        if not stop_voice: return "the voice client is connected: Winlink needs the audio link (stop the voice client first)"
         if voice: audio_send(b"C", json.dumps({"act": "quit"}).encode())
         else: drop_audio(aud, "Winlink on the Pi started")
         for _ in range(30):
@@ -1106,32 +1205,179 @@ def wl_start(ip, stop_voice=False):
         if st["audio"] is not None: drop_audio(st["audio"], "Winlink on the Pi started")
     if st["lsb"]: lsb_leave(True, "Winlink started")
     if st["cw"]: cw_leave(True, "Winlink started")
-    rig.cmd("M PKTUSB 0")
+    return ""
+def wl_modem_start(L):
+    """The audio link and the modem for link L (not Telnet), the radio in the right mode. -> "" or the error"""
+    if L in ("packet", "ardop"):
+        e = wl_shim()
+        if e: return e
+    m = "M PKTUSB 0" if L in ("hf", "ardop") else "M FM 0"; r = rig.cmd(m)[0]
+    if r: log(f"Winlink: the radio refused \"{m}\" (RPRT {r})")
+    fk = [sys.executable, "-u", os.environ["FT897_WL_FAKE"]] if a.dummy and os.environ.get("FT897_WL_FAKE") else None
+    os.makedirs(XARA_STATE, exist_ok=True); env = None
+    audio = [sys.executable, "-u", os.path.join(HERE, "ft897-winlink-audio.py"), "--port", str(a.audio_port)]
+    if L == "packet":                               # Dire Wolf plays at full scale: Drive turns it down here (xara has its own)
+        audio += ["--name", "Winlink on the Pi (Dire Wolf)", "--gain-db", f"{wlset['drive']:g}"]
+        conf = os.path.join(XARA_STATE, "direwolf-winlink.conf")
+        with open(conf, "w") as f: f.write(wl_dw_conf())
+        name, cmd = "direwolf", ["direwolf", "-c", conf, "-t", "0", "-q", "d"]
+        if not (a.dummy and os.path.exists(os.path.join(HERE, "noshim"))): env = dict(os.environ, LD_PRELOAD=SHIM)   # (the test checks the check)
+        if fk: name, cmd = "direwolf", fk + ["direwolf", str(WL_AGW)]
+    elif L == "ardop":                              # ardopcf's own drive (DRIVELEVEL, 0-100 % of full scale) from Drive in dB
+        lvl = max(1, min(100, round(100 * 10 ** (wlset["drive"] / 20))))
+        name, cmd = "ardop", [os.path.expanduser(a.ardop), "--nologfile", "--hostcommands", f"MYCALL {wlset['call']};DRIVELEVEL {lvl}",
+                              str(WL_ARDOP), LOOP_IN, LOOP_OUT]
+        if not (a.dummy and os.path.exists(os.path.join(HERE, "noshim"))): env = dict(os.environ, LD_PRELOAD=SHIM)
+        if fk: cmd = fk + ["direwolf", str(WL_ARDOP)]
+    else:
+        name, cmd = "xara", [wl_xara(), "--call", wlset["call"].split("-")[0], *(["--hf", str(wlset["bw"])] if L == "hf" else ["--fm", wlset["fm"]]), "--audio", "alsa",
+                             "--capture", LOOP_IN, "--playback", LOOP_OUT, "--radio", "--ptt", f"rigctld:127.0.0.1:{a.cat_port}", "--drive-db", f"{wlset['drive']:g}",
+                             "--addr", "127.0.0.1", "--kiss-port", "off", "--tx-buffer-ms", "120", "--state-dir", XARA_STATE]
+        if fk: cmd = fk + ["xara"]
+    with wl_lock:
+        e = "" if "audio" in wl["procs"] else wl_spawn("audio", audio)
+        e = e or wl_spawn(name, cmd, env)
+    if not e and L == "packet": threading.Thread(target=wl_agw_check, daemon=True).start()
+    if not e and L == "ardop": threading.Thread(target=wl_agw_check, args=(wl_ardop_running, WL_ARDOP, "ardopcf's host port"), daemon=True).start()
+    return e
+def wl_start(ip, stop_voice=False):
+    if wl_running(): return 0, ""
+    why = wl_missing()
+    if why: return 1, why
+    if not wlset["call"]: return 1, "enter your call sign first"
+    L = wlset["link"]
+    if L != "telnet":
+        e = wl_take_radio(stop_voice)
+        if e: return 1, e
     try: pc = wl_pat_config()
     except OSError as e: return 1, f"Pat's settings could not be written: {e}"
-    here = os.path.dirname(os.path.abspath(__file__))
-    cmds = {"audio": [sys.executable, "-u", os.path.join(here, "ft897-winlink-audio.py"), "--port", str(a.audio_port)],
-            "xara": [wl_xara(), "--call", wlset["call"].split("-")[0], "--hf", str(wlset["bw"]), "--audio", "alsa", "--capture", LOOP_IN,
-                     "--playback", LOOP_OUT, "--radio", "--ptt", f"rigctld:127.0.0.1:{a.cat_port}", "--drive-db", f"{wlset['drive']:g}",
-                     "--addr", "127.0.0.1", "--kiss-port", "off", "--tx-buffer-ms", "120", "--state-dir", XARA_STATE],
-            "pat": [pat_bin(), "--config", pc, "http", "--addr", f"{a.bind}:{a.pat_port}"]}
-    if a.dummy and os.environ.get("FT897_WL_FAKE"): cmds["xara"] = [sys.executable, "-u", os.environ["FT897_WL_FAKE"], "xara"]; cmds["pat"] = [sys.executable, "-u", os.environ["FT897_WL_FAKE"], "pat", str(a.pat_port)]
+    pat = [pat_bin(), "--config", pc, "http", "--addr", f"127.0.0.1:{PAT_INNER}"]
+    if a.dummy and os.environ.get("FT897_WL_FAKE"): pat = [sys.executable, "-u", os.environ["FT897_WL_FAKE"], "pat", str(PAT_INNER)]
     os.makedirs(XARA_STATE, exist_ok=True)
     with wl_lock:
         wl["err"] = ""; wl["stopping"] = False; wl["by"] = ip; wl["since"] = time.time(); wl["log"].clear()
-        for name in ("audio", "xara", "pat"):
-            try: pr = subprocess.Popen(cmds[name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
-            except OSError as e:
-                wl["err"] = f"{name} could not start: {e}"; break
-            wl["procs"][name] = pr; threading.Thread(target=wl_reader, args=(name, pr), daemon=True).start()
-    if wl["err"]: wl_stop(wl["err"]); return 1, wl["err"]
-    log(f"Winlink on the Pi started by {label_of(ip)} ({wlset['call']}, VARA HF {wlset['bw']})")
+        e = wl_spawn("pat", pat)
+    e = e or pat_proxy_start()
+    if not e and L != "telnet": e = wl_modem_start(L)
+    if e: wl["err"] = e; wl_stop(e); return 1, e
+    log(f"Winlink on the Pi started by {label_of(ip)} ({wlset['call']}, {wl_link_name()})")
     return 0, ""
+wl_switch_lock = threading.Lock()
+def wl_switch(L, bw=None, why=""):
+    """Pat asked for another link (its transport list, or Connect): the matching modem and radio mode, Pat keeps running. -> "" or why not"""
+    with wl_switch_lock:
+        if not wl_running(): return "Winlink is not running"
+        hf_bw = bw if L == "hf" and bw in (500, 2300, 2750) and bw != wlset["bw"] else None
+        modem = "direwolf" if L == "packet" else "ardop" if L == "ardop" else "xara" if L in ("hf", "fm") else None
+        with wl_lock: have = set(wl["procs"])
+        if L == wlset["link"] and not hf_bw and (modem is None or modem in have): return ""
+        old = wlset["link"]; wlset["link"] = L
+        why_not = wl_missing()
+        if not why_not and L != "telnet" and old == "telnet": why_not = wl_take_radio(False)
+        for _ in range(50):                         # let a transmission end (up to 5 s) rather than cut it
+            if not st["keyed"]: break
+            time.sleep(0.1)
+        if not why_not and st["keyed"]: why_not = "transmitting"
+        if why_not: wlset["link"] = old; wl["log"].append(f"{time.strftime('%H:%M:%S')} bridge: can't change to {WL_LINKS[L]}: {why_not}"); return why_not
+        if hf_bw: wlset["bw"] = hf_bw
+        wl_save()
+        wl_retire(["xara", "direwolf", "ardop", "audio"])      # (the audio link too: packet's has Drive applied, xara's doesn't need it)
+        e = "" if L == "telnet" else wl_modem_start(L)
+        msg = f"changed to {wl_link_name()}" + (f" ({why})" if why else "") + (f": {e}" if e else "")
+        wl["log"].append(f"{time.strftime('%H:%M:%S')} bridge: {msg}"); log("Winlink " + msg)
+        if e: wl["err"] = e
+        return e
+def wl_modem_ready(L, sec=8):
+    """Waits until the modem listens for Pat (xara's VARA port, Dire Wolf's AGW port), or Pat is already connected to it
+    (xara takes one client and stops listening: Pat keeps that connection for every call)."""
+    if L == "telnet" or a.dummy: return True
+    port = WL_AGW if L == "packet" else WL_ARDOP if L == "ardop" else 8300
+    t0 = time.time()
+    while time.time() - t0 < sec:
+        if tcp_listeners(port, ("0A", "01")): return True
+        time.sleep(0.2)
+    return False
+# ---- Pat's web page, passed on by the bridge: picking a transport in Pat (its RMS list asks for that mode) or connecting switches the link
+PAT_SCHEME = {"varahf": "hf", "varafm": "fm", "ax25": "packet", "ax25+agwpe": "packet", "ardop": "ardop", "telnet": "telnet"}
+PAT_LIST = {"varahf": "hf", "varafm": "fm", "packet": "packet", "ardop": "ardop"}
+def pat_hook(path):
+    """-> (http status, error) to answer at once instead of passing on, or None"""
+    import urllib.parse
+    u = urllib.parse.urlsplit(path); q = urllib.parse.parse_qs(u.query)
+    if u.path == "/api/rmslist":
+        L = PAT_LIST.get((q.get("mode") or [""])[0])
+        if L: threading.Thread(target=wl_switch, args=(L, None, "picked in Pat"), daemon=True).start()
+    elif u.path == "/api/connect":
+        url = (q.get("url") or [""])[0]; sch = url.split(":", 1)[0].lower(); L = PAT_SCHEME.get(sch)
+        if L is None and sch: return 400, f"{sch} is not available on this Pi: use VARA HF, VARA FM, AX.25, ARDOP or Telnet"
+        if L:
+            bw = None
+            try: bw = int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("bw", ["0"])[0])
+            except ValueError: pass
+            e = wl_switch(L, bw, "Connect in Pat")
+            if e: wl["log"].append(f"{time.strftime('%H:%M:%S')} bridge: Connect refused: {e}"); return 409, e
+            if not wl_modem_ready(L): wl["log"].append(f"{time.strftime('%H:%M:%S')} bridge: Connect not passed on: the modem is not ready"); return 503, "the modem did not start in time: try Connect again"
+            wl["log"].append(f"{time.strftime('%H:%M:%S')} bridge: Connect {url[:80]}")
+    return None
+def pat_pipe(src, dst):
+    try:
+        while True:
+            d = src.recv(65536)
+            if not d: break
+            dst.sendall(d)
+    except OSError: pass
+    for s in (dst, src):
+        try: s.shutdown(socket.SHUT_RDWR)
+        except OSError: pass
+def pat_client(c):
+    up = None
+    try:
+        c.settimeout(30); buf = b""
+        while b"\r\n\r\n" not in buf:
+            d = c.recv(65536)
+            if not d or len(buf) > 65536: return
+            buf += d
+        head, rest = buf.split(b"\r\n\r\n", 1); lines = head.decode("latin-1").split("\r\n")
+        try: method, path, ver = lines[0].split(" ", 2)
+        except ValueError: return
+        ws = any(l.lower().startswith("upgrade:") and "websocket" in l.lower() for l in lines[1:])
+        r = pat_hook(path) if method == "GET" else None
+        if r:
+            body = json.dumps({"error": r[1]}).encode()
+            c.sendall(f"HTTP/1.1 {r[0]} Error\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body); return
+        if not ws: lines = [lines[0]] + [l for l in lines[1:] if not l.lower().startswith(("connection:", "keep-alive:"))] + ["Connection: close"]
+        up = socket.create_connection(("127.0.0.1", PAT_INNER), timeout=10); up.settimeout(None); c.settimeout(None)
+        up.sendall("\r\n".join(lines).encode("latin-1") + b"\r\n\r\n" + rest)
+        t = threading.Thread(target=pat_pipe, args=(c, up), daemon=True); t.start(); pat_pipe(up, c)
+    except OSError: pass
+    finally:
+        for s in (c, up):
+            try: s and s.close()
+            except OSError: pass
+def pat_proxy_start():
+    """Listens on --pat-port while Winlink runs. -> "" or the error"""
+    try:
+        ls = socket.socket(socket.AF_INET); ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); ls.bind((a.bind, a.pat_port)); ls.listen(16)
+    except OSError as e: return f"the mailbox page's port {a.pat_port}: {e}"
+    wl["proxy"] = ls
+    def serve():
+        while True:
+            try: c, _ = ls.accept()
+            except OSError: return
+            threading.Thread(target=pat_client, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start(); return ""
+def wl_link_name():
+    L = wlset["link"]; return f"VARA HF {wlset['bw']}" if L == "hf" else f"VARA FM {wlset['fm']}" if L == "fm" else "packet 1200" if L == "packet" else "ARDOP" if L == "ardop" else "Telnet (internet)"
 def wl_stop(why=""):
     with wl_lock:
-        if not wl["procs"]: return
+        ls = wl.pop("proxy", None)
+        if not wl["procs"] and not ls: return
         wl["stopping"] = True; procs = dict(wl["procs"])
-    for name in ("pat", "xara", "audio"):            # xara first lets go of PTT; the bridge also un-keys when its CAT link closes
+    if ls:                                          # (shutdown first: on Linux close() alone doesn't wake the accept())
+        for fn in (lambda: ls.shutdown(socket.SHUT_RDWR), ls.close):
+            try: fn()
+            except OSError: pass
+    for name in ("pat", "xara", "direwolf", "ardop", "audio"):  # the modem first lets go of PTT; the bridge also un-keys when its CAT link closes
         pr = procs.get(name)
         if pr and pr.poll() is None:
             try: pr.terminate()
@@ -1147,16 +1393,18 @@ def wl_state():
     with wl_lock:
         on = bool(wl["procs"]); alive = {k: v.poll() is None for k, v in wl["procs"].items()}
         return {**wlset, "on": on, "alive": alive, "by": label_of(wl["by"]) if wl["by"] else None, "since": int(time.time() - wl["since"]) if on else 0,
-                "err": wl["err"], "log": list(wl["log"])[-12:], "pat_port": a.pat_port, "missing": wl_missing()}
+                "err": wl["err"], "log": list(wl["log"])[-12:], "pat_port": a.pat_port, "missing": wl_missing(), "link_name": wl_link_name()}
 def wl_op(ip, j):
     op = j.get("op")
     if op == "set":
-        if wl_running() and any(k in j for k in ("call", "bw", "drive")): return 1, "stop Winlink first"
+        if wl_running() and any(k in j for k in ("call", "bw", "drive", "link", "fm")): return 1, "stop Winlink first"
         old = dict(wlset); wl_clean(j)
         if wlset != old: wl_save()
         if j.get("call") and wlset["call"] != str(j["call"]).strip().upper(): return 1, "that call sign does not look right"
         return 0, ""
-    if op == "start": return wl_start(ip, j.get("stop_voice") is True)
+    if op == "start":
+        if j.get("link") in WL_LINKS and not wl_running() and j["link"] != wlset["link"]: wlset["link"] = j["link"]; wl_save()
+        return wl_start(ip, j.get("stop_voice") is True)
     if op == "stop": threading.Thread(target=wl_stop, args=(f"by {label_of(ip)}",), daemon=True).start(); return 0, ""
     return 1, "unknown Winlink command"
 
@@ -1165,14 +1413,16 @@ def wl_op(ip, j):
 # ports are off (they can't be limited to this Pi); the bridge talks KISS to it over a pseudo terminal only it can open.
 APRS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs.json")
 APRS_MSGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs-messages.json")
+APRS_STNS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs-stations.json")   # stations heard on the radio, kept across restarts
+KEEP_H = (0, 1, 3, 6, 12, 24, 72, 168, 720)       # forget stations not heard for this many hours (0 = never)
 APRS_RUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aprs-run") if a.dummy else os.path.expanduser("~/.local/state/ft897-aprs")
 TOCALL = "APZYNR"                                  # experimental software id: yaesu-netradio
 APDEF = {"call": "", "sym": "/-", "comment": "yaesu-netradio", "beacon": 30, "lat": None, "lon": None, "freq": 144_390_000,
-         "path": "WIDE1-1,WIDE2-1", "mode": "FM", "show_is": True, "is_km": 100}
+         "path": "WIDE1-1,WIDE2-1", "mode": "FM", "show_is": True, "is_km": 100, "keep_h": 24, "drive": -12}
 apset = dict(APDEF)
 ap = {"procs": {}, "by": None, "since": 0.0, "log": collections.deque(maxlen=80), "err": "", "stopping": False, "fd": None, "pty": None,
       "net": None, "net_at": 0.0, "stations": {}, "pk": collections.deque(maxlen=300), "msgs": [], "seq": 1, "bln": {}, "is_on": False, "unread": 0,
-      "echo": None}                                 # our own packet heard back: {"t", "via", "src"}
+      "echo": None, "dirty": False}                 # echo: our own packet heard back: {"t", "via", "src"}; dirty: stations to save
 def ap_echo(p, src):
     """Our own packet came back: repeated by a digipeater (rf), or gated to APRS-IS (is). Proof it got out; not a station."""
     path = p.get("path") or []
@@ -1212,7 +1462,32 @@ def ap_clean(j):
     if j.get("mode") in ("FM", "PKT"): apset["mode"] = j["mode"]
     if isinstance(j.get("show_is"), bool): apset["show_is"] = j["show_is"]
     if isinstance(j.get("is_km"), (int, float)) and not isinstance(j["is_km"], bool): apset["is_km"] = int(max(10, min(500, j["is_km"])))
+    if j.get("keep_h") in KEEP_H and not isinstance(j["keep_h"], bool): apset["keep_h"] = int(j["keep_h"])
+    if isinstance(j.get("drive"), (int, float)) and not isinstance(j["drive"], bool): apset["drive"] = int(max(-30, min(0, j["drive"])))   # dB below Dire Wolf's full scale
     return ("check the " + ", ".join(bad)) if bad else ""
+def ap_prune(now=None):
+    """Forgets stations not heard for longer than the setting (Settings, "Forget stations"). -> how many went"""
+    h = apset["keep_h"]
+    if not h: return 0
+    cut = (now or time.time()) - h * 3600
+    with ap_lock:
+        old = [k for k, s in ap["stations"].items() if s.get("last", 0) < cut]
+        for k in old: del ap["stations"][k]
+        if old: ap["dirty"] = True
+    return len(old)
+def ap_save_stns():
+    """The stations heard on the radio (internet-only ones come back from APRS-IS by themselves)."""
+    with ap_lock:
+        if not ap["dirty"]: return
+        j = json.dumps({"v": 1, "stations": {k: s for k, s in ap["stations"].items() if s.get("rf_last")}}); ap["dirty"] = False
+    try:                                            # (written outside the lock: log() and the disk may be slow)
+        with open(APRS_STNS + f".{threading.get_ident()}.tmp", "w") as f: f.write(j)
+        os.replace(APRS_STNS + f".{threading.get_ident()}.tmp", APRS_STNS)
+    except OSError as e: log(f"aprs-stations.json not saved: {e}")
+def ap_house_loop():
+    """Every 30 s: forget stale stations, save the list if it changed."""
+    while True:
+        time.sleep(30); ap_prune(); ap_save_stns()
 def ap_load():
     try:
         with open(APRS_FILE) as f: ap_clean(json.load(f))
@@ -1221,6 +1496,14 @@ def ap_load():
         with open(APRS_MSGS) as f: j = json.load(f)
         ap["msgs"] = [m for m in j.get("msgs", []) if isinstance(m, dict)][-500:]; ap["seq"] = int(j.get("seq", 1))
     except (OSError, ValueError, TypeError): pass
+    try:
+        with open(APRS_STNS) as f: j = json.load(f)
+        ap["stations"] = {k: s for k, s in (j.get("stations") or {}).items()
+                          if isinstance(s, dict) and isinstance(s.get("last"), (int, float)) and s.get("rf_last") and s.get("call") == k}
+        for s in ap["stations"].values(): s["src"] = "rf"
+        n = len(ap["stations"]); gone = ap_prune(); ap["dirty"] = False
+        if n: log(f"APRS: remembered {n - gone} station(s) heard on the radio" + (f"; forgot {gone} not heard for {apset['keep_h']} h" if gone else ""))
+    except (OSError, ValueError, TypeError, AttributeError): pass
 def ap_save():
     try:
         with open(APRS_FILE + ".tmp", "w") as f: json.dump(apset, f)
@@ -1256,8 +1539,10 @@ def ap_conf():
         L.append(f'PBEACON delay=1 every={apset["beacon"]} symbol="{apset["sym"]}" lat={apset["lat"]} long={apset["lon"]} comment="{cm}"' + (f" via={apset['path']}" if apset["path"] else ""))
     return "\n".join(L) + "\n"
 def ap_reader(name, pr):
+    seen = [False]
     for line in iter(pr.stdout.readline, b""):
         t = line.decode(errors="replace").rstrip()
+        if name == "direwolf": t = dw_line(t, seen) or ""
         if not t: continue
         m = re.search(r"Virtual KISS TNC is available on (/dev/pts/\d+)", t)
         if m and name == "direwolf": ap["pty"] = m[1]
@@ -1275,7 +1560,7 @@ def ap_station(p, src):
     with ap_lock:
         s = ap["stations"].setdefault(who, {"call": who, "first": now, "n": 0, "rf_last": 0.0})
         s["last"] = now; s["n"] += 1; s["src"] = src
-        if src == "rf": s["rf_last"] = now; s["path"] = ",".join(p.get("path") or [])
+        if src == "rf": s["rf_last"] = now; s["path"] = ",".join(p.get("path") or []); ap["dirty"] = True
         if "lat" in p and "lon" in p:                          # a short track, for stations that move
             tr = s.setdefault("track", []); pt = [round(p["lat"], 5), round(p["lon"], 5), int(now)]
             if not tr or abs(tr[-1][0] - pt[0]) + abs(tr[-1][1] - pt[1]) > 0.0003: tr.append(pt); del tr[:-30]
@@ -1385,7 +1670,7 @@ def ap_is_loop():
         ap["is_on"] = False; time.sleep(5)
 def ap_start(ip, stop_voice=False):
     if ap_running(): return 0, ""
-    if wl_running(): return 1, "stop Winlink first: both need the audio link"
+    if wl_radio(): return 1, "stop Winlink first: both need the audio link"
     why = ap_missing()
     if why: return 1, why
     if not apset["call"]: return 1, "enter your call sign (with an SSID, e.g. W5PL-10) first"
@@ -1409,7 +1694,7 @@ def ap_start(ip, stop_voice=False):
     with os.fdopen(os.open(conf + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: f.write(ap_conf())
     os.replace(conf + ".tmp", conf)
     here = os.path.dirname(os.path.abspath(__file__))
-    cmds = {"audio": [sys.executable, "-u", os.path.join(here, "ft897-winlink-audio.py"), "--port", str(a.audio_port), "--name", "APRS on the Pi (Dire Wolf)"],
+    cmds = {"audio": [sys.executable, "-u", os.path.join(here, "ft897-winlink-audio.py"), "--port", str(a.audio_port), "--name", "APRS on the Pi (Dire Wolf)", "--gain-db", str(apset["drive"])],
             "direwolf": ["direwolf", "-c", conf, "-p", "-t", "0", "-q", "d"]}
     ap_net_check()
     with ap_lock:
@@ -1440,7 +1725,7 @@ def ap_stop(why=""):
         try: os.close(ap["fd"])
         except OSError: pass
     with ap_lock: ap["procs"].clear(); ap["by"] = None; ap["fd"] = None; ap["pty"] = None
-    log("APRS on the Pi stopped" + (f" ({why})" if why else ""))
+    ap_save_stns(); log("APRS on the Pi stopped" + (f" ({why})" if why else ""))
 # ---------------------------------------------------------------- offline maps (ft897_maps.py): areas around a position, as MBTiles
 MAPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maps") if a.dummy else os.path.expanduser("~/.local/share/yaesu-netradio/maps")
 mapstore = maps.Store(MAPS_DIR, f"yaesu-netradio/{RELEASE} (offline maps for APRS; https://github.com/jwheeler188/yaesu-netradio)",
@@ -1498,7 +1783,8 @@ def ap_op(ip, j):
         if err: apset.update(old); return 1, err
         if apset != old:
             ap_save()
-            if ap_running() and any(apset[k] != old[k] for k in ("call", "sym", "comment", "beacon", "lat", "lon", "path", "freq")):
+            if apset["keep_h"] != old["keep_h"]: ap_prune(); ap_save_stns()
+            if ap_running() and any(apset[k] != old[k] for k in ("call", "sym", "comment", "beacon", "lat", "lon", "path", "freq", "drive")):
                 return 0, "saved: stop and start APRS to use them"
         return 0, ""
     if op == "start": return ap_start(ip, j.get("stop_voice") is True)
@@ -1515,8 +1801,8 @@ def ap_op(ip, j):
             if p: ap_handle(p, "is" if j.get("src") == "is" else "rf")
         return 0, ""
     if op == "clear":                              # the station list and packet log (messages stay)
-        with ap_lock: ap["stations"].clear(); ap["pk"].clear(); ap["bln"].clear()
-        return 0, ""
+        with ap_lock: ap["stations"].clear(); ap["pk"].clear(); ap["bln"].clear(); ap["dirty"] = True
+        ap_save_stns(); return 0, ""
     if not ap_running(): return 1, "start APRS first"
     if op == "beacon":
         if apset["lat"] is None: return 1, "set your position first"
@@ -1736,7 +2022,7 @@ def take_control(ip, label):
         aud = st["audio"] if st["audio_ip"] != ip and not (st["audio_ip"] == "127.0.0.1" and ip in (wl["by"], ap["by"])) else None
         cats = [v for v in st["cat_clients"].values() if v["ip"] not in (ip, "127.0.0.1")]
     log(f"TAKE CONTROL by {label}: closing {len(cats)} CAT connection(s)" + (" and the audio link" if aud else ""))
-    if wl_running() and wl["by"] != ip: wl_stop(f"radio taken over by {label}")
+    if wl_radio() and wl["by"] != ip: wl_stop(f"radio taken over by {label}")
     if ap_running() and ap["by"] != ip: ap_stop(f"radio taken over by {label}")
     if cwq["ip"] and cwq["ip"] != ip:                  # the CW keyer's queue belonged to someone else
         with cw_lock: cwq["text"].clear(); cwq["played"].clear()
@@ -2288,6 +2574,8 @@ def on_stop(signum, frame):
     for f in (wl_stop, ap_stop):
         try: f("the bridge stops")
         except Exception: pass
+    try: ap_save_stns()
+    except Exception: pass
     if st["keyed"]:
         try: rig_cmd("T 0", timeout=1)
         except OSError: pass
@@ -2307,6 +2595,6 @@ if __name__ == "__main__":
             try: fn()
             except Exception as e:
                 import traceback; log(f"{fn.__name__} failed: {e!r}\n{traceback.format_exc()}"); time.sleep(2)
-    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server, cw_loop, cw_rx_loop, ap_kiss_loop, ap_is_loop):
+    for fn in (rig_loop, watchdog, cat_server, audio_server, rx_loop, tx_loop, poller, web_server, cw_loop, cw_rx_loop, ap_kiss_loop, ap_is_loop, ap_house_loop):
         threading.Thread(target=supervised, args=(fn,), daemon=True).start()
     while True: time.sleep(3600)

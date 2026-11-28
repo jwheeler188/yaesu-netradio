@@ -86,7 +86,8 @@ container on x86_64:
     --kiss-port N|off       KISS TCP port (default: 8100)
     --persistence P         KISS p-persistence
 
-    --registered            enable registered speeds (must set build flag)
+    --registered            enable registered speeds (on by default when built with the `registered` feature)
+    --unregistered          use only unregistered speeds for this run
 
     --digi CALL             FM digipeat for CALL (default: off)
     --record PATH           record rx, tx and PTT to FLAC (or WAV if .wav)
@@ -157,8 +158,10 @@ options:
 
 ## registered mode
 
-compile with the `registered` feature for higher speeds if you have a
-registered copy of VARA, then run with `xara --registered ...`.
+the `registered` build feature turns on the higher speed levels. it is in the
+default features and is then on at every start; `xara --unregistered ...` keeps a
+run to the unregistered speeds. build with `--no-default-features` (and without
+`--features registered`) to leave the higher speeds out altogether.
 
 ## copyright
 

@@ -41,7 +41,7 @@ programs over the network, and voice from a web page with a headset.
 
 ## 1. What it does
 
-<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="720"><br><em>The web panel: the radio it is connected to beside the name, waterfall and scan on top, the radio display with its meters and PTT, then Tune, Band, Mode and Filter side by side. (Taken on the simulated radio, with some bands and modes locked.)</em></p>
+<p align="center"><img src="../screenshots/1-panel-20m.png" alt="The web panel on 20 m" width="720"><br><em>The web panel: the radio it is connected to beside the name, waterfall and scan on top, the radio display with its meters and PTT, under it the row of what is running (here the voice client, lit green, with Stop all at the right), then Tune, Band, Mode and Filter side by side. (Taken on the simulated radio, with some bands and modes locked.)</em></p>
 
 The radio and Digirig stay at home, plugged into a Raspberry Pi. From any computer on your network or VPN you get:
 
@@ -133,8 +133,9 @@ The radio and Digirig stay at home, plugged into a Raspberry Pi. From any comput
 
 ### 3.6 Winlink on the Pi (optional)
 
-Winlink email can run on the Pi itself, so no laptop software is needed: xara (a VARA HF-compatible modem, MIT
-licence, included in `third_party/xara`) and [Pat](https://getpat.io) (the mail program).
+Winlink email can run on the Pi itself, so no laptop software is needed: xara (a VARA-compatible modem, MIT
+licence, included in `third_party/xara`), ardopcf (the ARDOP modem, MIT licence, included in `third_party/ardopcf`) and
+[Pat](https://getpat.io) (the mail program). The installer builds both modems from the included source.
 
 - **The easy way:** `./install.sh` asks "Also set up Winlink email on this Pi?" (it installs Dire Wolf for APRS too). Or run `pi/winlink-install.sh` any time.
   It installs the build tools and Pat, adds the loopback sound card that joins xara and the bridge (card 10, so the
@@ -263,9 +264,16 @@ about 83% of clips at 10 dB above the noise and 56% at 0 dB, and about 1 in 60 o
 Hold the **PTT** button or the **Space bar**. Release to un-key. If the browser closes or the network drops, the Pi
 un-keys within about 1 s. After any safety un-key, a PTT that is still held does nothing: press it again.
 
-**Start / Stop voice client.** Under the radio display:
+**What the radio is doing.** Under the radio display one row holds **Voice**, **APRS** and **Winlink**, each with its
+own Start/Stop. The one that is running lights up green and its name reads "● on", so you can see at a glance what
+has the radio. When anything is running, **⏹ Stop all** shows at the right: after asking, it stops CW sending, APRS,
+Winlink (xara and Pat) and the voice client, and un-keys. A voice client on someone else's computer can only be
+stopped from that computer or by the administrator; Stop all says so if it cannot. If APRS is not ready (Dire Wolf
+missing, or no internet for the internet features) a short amber note shows next to it.
 
-- **▶ Start voice client** shows when no audio client is connected. It starts "Start FT-897 Voice" on the computer
+**Start / Stop voice client** (the Voice part of that row):
+
+- **▶ Start client** shows when no audio client is connected. It starts "Start FT-897 Voice" on the computer
   you are using, in its own Terminal (Mac) or command window (Windows). The browser asks the first time whether to
   allow it. It needs the one-time setup from section 3 (install-link); without it the button does nothing.
 - **■ Stop voice client** ends the voice client on this computer; its window stays open and says so. Only the
@@ -321,19 +329,52 @@ the air, and band locks check that. Sending needs no voice client; you need it t
 
 ### 5.11 Winlink email
 
-With [Winlink on the Pi](#36-winlink-on-the-pi-optional) installed, the **Winlink** tab has your call sign, grid,
-VARA bandwidth (500, 2300 or 2750) and **Drive** (start at −12 dBFS and check for no ALC, as with WSJT-X).
+With [Winlink on the Pi](#36-winlink-on-the-pi-optional) installed, you pick the **link** in the Winlink part of the row
+under the radio display and press **▶ Start**; the **Winlink** tab has your call sign, grid, and for VARA the bandwidth
+(or narrow/wide for VARA FM) and **Drive** (start at −12 dBFS and check for no ALC, as with WSJT-X). For packet, Drive
+turns Dire Wolf's audio down before the radio (Dire Wolf always plays at full scale), so the FM deviation isn't too high.
 
-<p align="center"><img src="../screenshots/13-winlink-tab.png" alt="The Winlink tab" width="720"><br><em>The Winlink tab while Winlink runs: xara, Pat and the audio link are up, with their latest log lines below.</em></p>
+| Link | For | Modem on the Pi | Radio | In Pat, connect with |
+|---|---|---|---|---|
+| **VARA HF** | HF gateways | xara (500, 2300 or 2750) | DIG | VARA HF |
+| **VARA FM** | 2 m / 70 cm VARA FM gateways | xara (narrow for 12.5 kHz channels, or wide) | FM | VARA FM |
+| **AX.25 packet** (1200 baud) | 2 m / 70 cm packet gateways and nodes | Dire Wolf | FM | AX.25 |
+| **ARDOP** | HF gateways (ARDOP is free and open) | ardopcf | DIG | ARDOP |
+| **Telnet** | a Winlink server over the internet | none | left alone | Telnet |
 
-1. **Start Winlink.** If the voice client is connected, the panel asks to stop it: there is one audio link at a time.
-   The radio goes to DIG.
-2. **Open the mailbox (Pat)** opens Pat's page on the Pi (port 8092). Write mail, then **Connect** → **VARA HF**, pick
-   a gateway from the list and connect: Pat tunes the radio and xara does the rest. Pat asks for your Winlink password
+Telnet uses no radio at all: the voice client and APRS keep running, and another computer taking control doesn't stop it.
+PACTOR needs an SCS hardware modem and is not supported. For ARDOP, Pat keys the radio itself (through the bridge, so
+every lock applies), and **Drive** sets ardopcf's own transmit level (−12 dB is 25 %); like Dire Wolf, ardopcf's
+connection for Pat is kept to the Pi itself, or Winlink stops.
+
+For packet, Dire Wolf runs only for Pat: no digipeater and no beacons (that is APRS's job). Its connection for Pat is
+kept to the Pi itself (a small library, `localonly.c`, built the first time); if it were ever open to the network, the
+bridge stops Winlink at once and says so. APRS and Winlink can't run at the same time: both need the radio.
+
+**xara's speeds ("registered").** VARA itself has two tiers. Without a licence key, VARA keeps to its lower speed levels.
+With a key, bought from VARA's author, it uses all of them. xara is separate, open-source software (MIT licence) and
+has no licence key of its own. The VARA key belongs to VARA's software and is never needed or read by xara. xara's
+`registered` setting is left over from copying VARA's two tiers: it only decides whether xara offers the higher speed
+levels. It is **on** in this project's build (`pi/winlink-install.sh` builds with `--features alsa,registered`, and
+xara then starts with the higher speeds), as in other maintained copies of xara. A link still runs only as fast as both
+stations and the band allow, so the higher levels are used only when the other station offers them too. To keep xara to the
+lower speeds, add `--unregistered` to xara's start-up options, or build without `registered`.
+
+
+<p align="center"><img src="../screenshots/13-winlink-tab.png" alt="The Winlink tab" width="720"><br><em>The Winlink tab: call sign, grid, and for VARA HF the bandwidth and Drive. The link is picked, and Winlink started, in the row under the radio display; while it runs, the latest log lines show below.</em></p>
+
+1. **Pick the link and press ▶ Start** (under the radio display). Over the radio, if the voice client is connected, the panel asks to stop it: there is one audio link at a time.
+   The radio goes to DIG (VARA HF) or FM (VARA FM, packet).
+2. **✉ Mailbox** opens Pat's page on the Pi (port 8092). Write mail, then **Connect**, pick the transport (**VARA HF**,
+   **VARA FM**, **AX.25** or **Telnet**) and a gateway from the list, and connect: Pat tunes the radio and the modem does the rest.
+   **You don't have to stop and restart to change links:** picking another transport in Pat's Connect window switches the
+   modem and the radio's mode (DIG or FM) right away, while you open the gateway list; Connect itself checks it once more
+   (and for VARA HF uses the bandwidth Pat asks for). Over the radio, a connected voice client or APRS keeps Pat from taking
+   the radio, and Pat shows why. PACTOR isn't available here. Pat asks for your Winlink password
    the first time; it stays in Pat's settings on the Pi.
-3. **Stop Winlink** when you are done.
+3. **■ Stop** when you are done (or **⏹ Stop all**).
 
-xara keys the radio through the bridge's CAT port, so every lock, the transmit time limit and the high-SWR shutdown
+The modem keys the radio through the bridge's CAT port, so every lock, the transmit time limit and the high-SWR shutdown
 apply. If another computer takes control, Winlink stops. The tab shows the last lines of xara's and Pat's logs. Pat's
 page has no password of its own: anyone who can open the panel can open it while Winlink runs.
 
@@ -344,8 +385,8 @@ APRS runs on the Pi with [Dire Wolf](https://github.com/wb2osz/direwolf) as the 
 to the APRS frequency in FM, the voice client can't connect, and every transmit lock and safety check applies, because Dire Wolf
 keys the radio through the bridge.
 
-APRS has **its own page**, `http://<Pi address>:8080/aprs`: the panel's **APRS** tab has Start/Stop, a status line and
-**Open the APRS page**. Keep it open on another screen or a tablet; it uses the same sign-in and control rules as the panel.
+APRS has **its own page**, `http://<Pi address>:8080/aprs`: the **APRS** part of the row under the radio display has Start/Stop and
+**APRS page** (with the number of unread messages). Keep it open on another screen or a tablet; it uses the same sign-in and control rules as the panel.
 
 <p align="center"><img src="../screenshots/14-aprs-page.png" alt="The APRS page" width="760"><br><em>The APRS page: the map with each station's symbol, a moving station's track, internet stations outlined in blue, and the Messages tab. (Test stations.)</em></p>
 
@@ -358,10 +399,13 @@ APRS has **its own page**, `http://<Pi address>:8080/aprs`: the panel's **APRS**
   hours, since midnight), snow and sunlight, whatever the station sends, in your units; the list shows their temperature.
 - **Stations:** the same stations as a list, newest first, with distance and bearing, how long ago, and the path. Type in
   "Find a station" to filter; click one to see it on the map. **Clear list** empties the list and packet log.
+  Stations heard on the radio are **remembered** when APRS, the bridge or the Pi restarts (internet-only stations are not:
+  they come back from APRS-IS by themselves). **Forget stations** (Settings) clears out ones not heard for 1 hour up to
+  30 days, or never; 1 day out of the box.
 - **Messages:** one button per station you've exchanged messages with. Messages to you are acknowledged automatically, every time a
   copy arrives, and shown once; yours are sent with a number and repeated after 30, 60, 120 and 240 s until acknowledged:
   "✓ delivered", or "✗ no answer" after 5 tries (about 11 minutes). "✗ refused by their radio" means the other station's radio sent
-  back a reject: usually its message memory is full, or it is set not to accept messages. Bulletins heard show below. The tab (and the panel's APRS tab) shows a red count of unread messages.
+  back a reject: usually its message memory is full, or it is set not to accept messages. Bulletins heard show below. The tab shows a red count of unread messages, and the panel's **APRS page** button the same number.
 - **Packets:** everything heard, with what came from the internet in blue and what this station sent in amber.
 - **Maps (offline maps):** download maps to the Pi so the map works with no internet. Choose **Around** (your position or
   the centre of the map now), **Radius**, **Detail up to** (zoom 10 region, 12 towns and main roads, 14 streets, 16 most detail),
@@ -376,8 +420,10 @@ APRS has **its own page**, `http://<Pi address>:8080/aprs`: the panel's **APRS**
 <p align="center"><img src="../screenshots/16-aprs-offline-maps.png" alt="Offline maps" width="760"><br><em>An offline USGS topo map, drawn from the Pi with no internet, and the Maps tab with the download settings and the saved area. (Test stations.)</em></p>
 
 - **Settings:** your call sign with an SSID (-10 is usual for a home station or iGate), symbol, position (grid square or
-  latitude/longitude, or the 📍 button), comment, beacon interval (or off), path (WIDE2-1 for a fixed station, WIDE1-1,WIDE2-1
-  for mobile or portable), your region's APRS frequency, **internet stations**, and **Units** (miles, mph and feet, or kilometres,
+  latitude/longitude, or the 📍 button), comment, beacon interval (or off), **Transmit level** (Dire Wolf's audio turned down before the radio, −12 dB out of the
+  box: lower it if stations can't decode you cleanly), path (WIDE2-1 for a fixed station, WIDE1-1,WIDE2-1
+  for mobile or portable), your region's APRS frequency, **internet stations**, **Forget stations** (how long a station not heard stays on the
+  list), and **Units** (miles, mph and feet, or kilometres,
   km/h and metres; kept per browser).
 - **Internet stations:** stations near you from APRS-IS, read only. Anything that came from the internet and was not heard on
   the radio is outlined in **blue** on the map, in the list and in messages, so you always know whether you can reach a station by
@@ -392,7 +438,7 @@ APRS has **its own page**, `http://<Pi address>:8080/aprs`: the panel's **APRS**
 All audio settings live in the **voice client** on your laptop. They're remembered in `~/.ft897-audio.json` and
 changed from the panel's **Audio & filters** tab. Double-click a slider to put it back to its default.
 
-<p align="center"><img src="../screenshots/4-audio-controls.png" alt="Audio and filters tab" width="720"><br><em>The Audio & filters tab: receive on the left, transmit on the right.. The Notch 2 sliders show while Notch 2 is ticked.</em></p>
+<p align="center"><img src="../screenshots/4-audio-controls.png" alt="Audio and filters tab" width="720"><br><em>The Audio & filters tab: receive on the left, transmit on the right (greyed here: the administrator has locked transmit audio). The Notch 2 sliders show while Notch 2 is ticked.</em></p>
 
 ### 6.1 Receive
 

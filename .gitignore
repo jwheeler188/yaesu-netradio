@@ -20,6 +20,7 @@ pi/xara-state/
 pi/tx.raw
 pi/aprs.json
 pi/aprs-messages.json
+pi/aprs-stations.json
 pi/aprs-secret.json
 pi/aprs-run/
 pi/maps/

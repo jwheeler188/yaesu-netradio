@@ -7,15 +7,24 @@ connects to the bridge's audio port like the laptop's data client does, so every
   xara plays            -> Loopback DEV 0 SUB 1  ->  we capture      Loopback DEV 1 SUB 1  -> bridge transmit audio
 xara keys the radio through the bridge's CAT port (rigctld protocol), as WSJT-X does.
 """
-import argparse, json, socket, struct, subprocess, sys, threading, time
+import argparse, array, json, socket, struct, subprocess, sys, threading, time
 
 p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
 p.add_argument("--port", type=int, default=4534, help="the bridge's audio port")
 p.add_argument("--to-modem", default="plughw:CARD=Loopback,DEV=0,SUBDEV=0", help="where receive audio goes (xara captures the other end)")
 p.add_argument("--from-modem", default="plughw:CARD=Loopback,DEV=1,SUBDEV=1", help="where xara's transmit audio comes from")
 p.add_argument("--name", default="Winlink on the Pi (xara)")
+p.add_argument("--gain-db", type=float, default=0.0, help="turn the modem's transmit audio down by this much (<= 0): Dire Wolf always plays at full scale")
 a = p.parse_args()
 RATE, FRAME = 48000, 48000 * 2 * 20 // 1000
+GAIN = 10 ** (min(0.0, max(-40.0, a.gain_db)) / 20)
+
+
+def scale(d):
+    if GAIN >= 0.999 or len(d) % 2: return d
+    x = array.array("h", d)
+    for i in range(len(x)): x[i] = int(x[i] * GAIN)
+    return x.tobytes()
 
 
 def log(m): print(time.strftime("%H:%M:%S ") + m, flush=True)
@@ -54,6 +63,7 @@ def run():
             while alive[0]:
                 d = rec.stdout.read(FRAME)
                 if not d: break
+                d = scale(d)
                 with wl:
                     frame(s, b"A", d); n += 1
                     if n % 25 == 0: frame(s, b"S", json.dumps({"voice": False, "client": "winlink", "name": a.name}).encode())

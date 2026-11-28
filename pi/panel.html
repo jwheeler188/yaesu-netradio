@@ -91,7 +91,6 @@ a.btn { color: var(--dim); font-size: 13px; text-decoration: none; padding: 4px 
 #cwsent { color: var(--dim); } #cwqueue { color: var(--text); background: rgba(255,180,84,.12); }
 #cwstat i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--edge); margin: 0 4px -1px 6px; } #cwstat i.on { background: #8dffb0; }
 #cwerr { color: var(--bad); }
-.apbadge { background: var(--bad); color: #fff; border-radius: 9px; font-size: 11px; padding: 0 6px; margin-left: 5px; }
 .apgrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 10px; } @media (max-width: 900px) { .apgrid { grid-template-columns: 1fr; } }
 .aptbl { max-height: 300px; overflow: auto; font-size: 13px; } .aptbl table { width: 100%; border-collapse: collapse; } .aptbl td, .aptbl th { padding: 3px 6px; border-bottom: 1px solid var(--edge); text-align: left; white-space: nowrap; }
 .aptbl td.c { white-space: normal; color: var(--dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; } .aptbl tr { cursor: pointer; } .aptbl tr:hover td { background: var(--btn); }
@@ -102,7 +101,7 @@ a.btn { color: var(--dim); font-size: 13px; text-decoration: none; padding: 4px 
 .aplist .m small { color: var(--dim); margin: 0 5px; }
 .appk { max-height: 170px; overflow: auto; font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; background: var(--lcd); color: var(--lcdtext); border-radius: 6px; padding: 6px 8px; margin: 4px 0 6px; white-space: pre-wrap; word-break: break-all; }
 .appk .is { color: #8cc8ff; } .appk .tx { color: #ffb454; }
-#apopen, #wlopen { border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); padding: 6px 12px; font-size: 14px; }
+#apopen { border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); padding: 6px 12px; font-size: 14px; }
 #cwmacs button { font-size: 13px; }
 .msg { min-height: 18px; font-size: 13px; color: var(--warn); margin-top: 8px; }
 .fm { display: none; } .fm.show { display: flex; }
@@ -155,6 +154,12 @@ dialog label { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-
 .vcrow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 6px; }
 .vcmode { display: inline-flex; align-items: center; gap: 6px; padding-left: 12px; border-left: 1px solid var(--edge); font-size: 13px; }
 .vcmode b { color: var(--dim); font-weight: 600; } .vcrow button.running { border-color: var(--good); color: var(--good); }
+.vcmode { border: 1px solid transparent; border-radius: 8px; padding: 2px 8px 2px 12px; transition: background .2s, border-color .2s; }
+.vcmode.active { background: color-mix(in srgb, var(--good) 16%, transparent); border-color: var(--good); }
+.vcmode.active b { color: var(--good); } .vcmode.active b::after { content: " ● on"; font-weight: 700; }
+.vcmode .vcwarn { color: var(--warn); font-size: 12px; }
+.vcrow button#stopall { border-color: var(--bad); color: var(--bad); font-weight: 600; margin-left: auto; }
+.vcrow select { padding: 2px 4px; font-size: 13px; width: auto; }
 .vcrow a.btn, .vcrow button { padding: 3px 10px; font-size: 13px; border: 1px solid var(--edge); border-radius: 6px; background: var(--btn); color: var(--text); }
 .vsep { width: 1px; align-self: stretch; background: var(--edge); }
 /* control deck: tune, band, mode and filter side by side */
@@ -248,10 +253,11 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     </div>
     <div class="hint" id="lsbhint" hidden></div>
     <div class="vcrow"><span class="small" id="pttinfo">Hold to talk. Needs the audio client running (Start FT-897 Voice).</span>
-      <a class="btn" id="vcstart" href="ft897voice://start" hidden title="Starts “Start FT-897 Voice” on this computer. Nothing happens? Run the installer once more (macOS/install.sh, or windows\install-link.bat), which sets this link up.">▶ Start voice client</a>
-      <button id="vcstop" hidden title="Ends the voice client on this computer (its window stays open)">■ Stop voice client</button>
-      <span class="vcmode" title="APRS on the Pi (Dire Wolf): has the radio to itself while it runs"><b>APRS</b><button id="vcaprs">▶ Start</button><a class="btn" id="vcaprsopen" href="/aprs" target="_blank" rel="noopener">🗺 APRS page</a></span>
-      <span class="vcmode" title="Winlink email on the Pi (xara + Pat): has the radio to itself while it runs"><b>Winlink</b><button id="vcwl">▶ Start</button><a class="btn" id="vcwlopen" target="_blank" rel="noopener" hidden>✉ Mailbox</a></span></div>
+      <span class="vcmode" id="vgvoice" title="Voice: the audio client on your computer (Start FT-897 Voice)"><b>Voice</b><a class="btn" id="vcstart" href="ft897voice://start" hidden title="Starts “Start FT-897 Voice” on this computer. Nothing happens? Run the installer once more (macOS/install.sh, or windows\install-link.bat), which sets this link up.">▶ Start client</a>
+      <button id="vcstop" hidden title="Ends the voice client on this computer (its window stays open)">■ Stop voice client</button><span class="small" id="vcvoicewho" hidden></span></span>
+      <span class="vcmode" id="vgaprs" title="APRS on the Pi (Dire Wolf): has the radio to itself while it runs"><b>APRS</b><button id="vcaprs">▶ Start</button><a class="btn" id="vcaprsopen" href="/aprs" target="_blank" rel="noopener">🗺 APRS page</a><span class="vcwarn" id="vcaprswarn" hidden></span></span>
+      <span class="vcmode" id="vgwl" title="Winlink email on the Pi: pick how to reach a gateway, then Start. Pat is the mailbox. Every link but Telnet has the radio to itself while it runs."><b>Winlink</b><select id="vcwllink" aria-label="Winlink link" title="VARA HF and ARDOP: HF gateways, radio in DIG. VARA FM and packet (AX.25): 2 m / 70 cm gateways, radio in FM. Telnet: over the internet, no radio."><option value="hf">VARA HF</option><option value="fm">VARA FM</option><option value="packet">AX.25 packet</option><option value="ardop">ARDOP</option><option value="telnet">Telnet</option></select><button id="vcwl">▶ Start</button><a class="btn" id="vcwlopen" target="_blank" rel="noopener" hidden>✉ Mailbox</a></span>
+      <button id="stopall" hidden title="Stops everything running on the radio: CW sending, APRS, Winlink (xara and Pat) and the voice client, and un-keys">⏹ Stop all</button></div>
   </div>
 
   <div class="card">
@@ -319,7 +325,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
   </div>
 
   <div class="card">
-    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button><button data-tab="wl">Winlink</button><button data-tab="aprs">APRS<span id="apbadge" class="apbadge" hidden></span></button><button data-tab="opt">Options</button><button data-tab="conn">Connected</button></div>
+    <div class="tabs"><button data-tab="audio">Audio &amp; filters</button><button data-tab="fav">Favorites</button><button data-tab="reps">Repeaters</button><button data-tab="wl">Winlink</button><button data-tab="opt">Options</button><button data-tab="conn">Connected</button></div>
     <div class="pane" id="pane-audio">
       <div class="small" id="audinfo"></div>
       <div class="ctl2" id="audctl">
@@ -360,19 +366,12 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
       <div class="small" id="wlstat">–</div>
       <div class="row"><label class="t">Call sign</label><input id="wlcall" style="width:110px;text-transform:uppercase" autocomplete="off" spellcheck="false">
         <span class="small">Grid</span><input id="wlloc" style="width:80px" placeholder="DM79" autocomplete="off" spellcheck="false">
-        <span class="small">Bandwidth</span><select id="wlbw"><option value="500">VARA 500</option><option value="2300">VARA 2300</option><option value="2750">VARA 2750</option></select>
-        <span class="small">Drive</span><input type="range" id="wldrive" min="-30" max="0" step="1" style="width:100px" aria-label="Drive"><span id="wldrivev" class="small" style="min-width:56px"></span></div>
-      <div class="row"><button id="wlgo" class="primary">Start Winlink</button><button id="wlstop">Stop Winlink</button><a class="btn" id="wlopen" target="_blank" rel="noopener" hidden>✉ Open the mailbox (Pat)</a></div>
-      <div class="small" style="margin-top:8px">Winlink runs on the Pi: xara (a VARA HF modem) and Pat (the mail program). Open the mailbox, write or read mail, then
-        Connect → VARA HF and pick a gateway: Pat tunes the radio. Pat asks for your Winlink password the first time; it stays on the Pi.
-        While Winlink runs the voice client can't connect (one audio link at a time) and the radio stays in DIG. Every transmit lock and safety check still applies.</div>
+        <span class="small" id="wlbwl">Bandwidth</span><select id="wlbw"><option value="500">VARA 500</option><option value="2300">VARA 2300</option><option value="2750">VARA 2750</option></select><select id="wlfm" hidden title="Narrow for 12.5 kHz channels; wide is faster where the gateway allows it"><option value="narrow">narrow</option><option value="wide">wide</option></select>
+        <span class="small" id="wldrivel">Drive</span><input type="range" id="wldrive" min="-30" max="0" step="1" style="width:100px" aria-label="Drive"><span id="wldrivev" class="small" style="min-width:56px"></span></div>
+      <div class="small" style="margin-top:8px">Start Winlink under the radio display: pick the link (VARA HF, VARA FM, AX.25 packet, ARDOP or Telnet), then ▶ Start, then ✉ Mailbox.
+        In Pat, Connect with the same link and pick a gateway from its list: Pat tunes the radio. Pat asks for your Winlink password the first time; it stays on the Pi.
+        Over the radio, Winlink has the radio to itself (no voice client, no APRS) and every transmit lock and safety check still applies. Telnet goes over the internet and leaves the radio alone.</div>
       <pre id="wllog" style="max-height:150px;overflow:auto;font-size:12px;background:var(--lcd);color:var(--lcdtext);border-radius:6px;padding:6px 8px;margin:8px 0 0;white-space:pre-wrap"></pre>
-    </div>
-    <div class="pane" id="pane-aprs">
-      <div class="small" id="apstat">–</div>
-      <div class="row"><a class="btn" id="apopen" href="/aprs" target="_blank" rel="noopener">🗺 Open the APRS page</a><button id="apgo" class="primary">Start APRS</button><button id="apstop">Stop APRS</button></div>
-      <div class="small" style="margin-top:8px">APRS runs on the Pi with Dire Wolf. Its own page has the map, stations, messages, packets and your station settings;
-        keep it open on another screen or tablet. While APRS runs it has the radio to itself (like Winlink). The digipeater and iGate are set on the administration page.</div>
     </div>
     <div class="pane" id="pane-opt">
       <div class="opts">
@@ -838,7 +837,7 @@ async function poll() {
   try {
     const r = await fetch("/api/state", { headers: headers(), cache: "no-store" });
     S = await r.json(); lastOk = Date.now(); render(); wlRender();
-    if (S.aprs) { $("apbadge").hidden = !S.aprs.unread; $("apbadge").textContent = S.aprs.unread; apRender(); }
+    modeRow();
   } catch (e) { }
   try { renderAudio(); repSync(); } catch (e) { console.error(e); }
   const age = (Date.now() - lastOk) / 1000;
@@ -853,29 +852,41 @@ async function poll() {
 function tab(t) { document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll(".pane").forEach(p => p.classList.toggle("show", p.id === "pane-" + t)); store("ft897.tab", t); }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => tab(b.dataset.tab));
-tab(["audio", "fav", "reps", "wl", "aprs"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
+tab(["audio", "fav", "reps", "wl"].includes(store("ft897.tab")) ? store("ft897.tab") : "audio");
 // ---------- APRS on the Pi (Dire Wolf): the full view is its own page, /aprs
-$("apgo").onclick = () => {
+function apStart() {
   if (S && S.audio && S.audio.ip !== "127.0.0.1") { if (!confirm("The voice client on " + S.audio.name + " is connected. Stop it and start APRS?")) return; return post("/api/aprs", { op: "start", stop_voice: true }); }
   post("/api/aprs", { op: "start" });
+}
+$("vcaprs").onclick = () => { if (S && S.aprs && S.aprs.on) post("/api/aprs", { op: "stop" }); else { if (S && S.aprs && !S.aprs.call) return msg("set your call sign on the APRS page (Settings) first"); apStart(); } };
+$("vcwl").onclick = () => { if (S && S.winlink && S.winlink.on) post("/api/winlink", { op: "stop" }); else { if (S && S.winlink && !S.winlink.call) { tab("wl"); return msg("enter your call sign in the Winlink tab first"); } wlStart($("vcwllink").value); } };
+$("stopall").onclick = () => {                            // everything off: CW, APRS, Winlink, the voice client, PTT
+  if (!S || !S.allowed) return msg("take control first");
+  const au = S.audio, voice = !!(au && au.ip !== "127.0.0.1"), on = [];
+  if (cwOn()) on.push("CW sending"); if (S.aprs && S.aprs.on) on.push("APRS"); if (S.winlink && S.winlink.on) on.push("Winlink");
+  if (voice) on.push("the voice client" + (au.ip !== S.you ? " on " + au.name : ""));
+  if (!confirm("Stop " + (on.length ? on.join(", ") : "everything") + "?")) return;
+  pttUp(); if (cwOn()) cwStop();
+  if (S.aprs && S.aprs.on) post("/api/aprs", { op: "stop" });
+  if (S.winlink && S.winlink.on) post("/api/winlink", { op: "stop" });
+  if (voice) { if (!$("vcstop").hidden) cmd({ a: "audio", act: "quit" }); else msg("the voice client on " + au.name + " has to be closed on that computer"); }
 };
-$("apstop").onclick = () => post("/api/aprs", { op: "stop" });
-$("vcaprs").onclick = () => { if (S && S.aprs && S.aprs.on) $("apstop").click(); else { if (S && S.aprs && !S.aprs.call) { tab("aprs"); return msg("set your call sign on the APRS page first"); } $("apgo").click(); } };
-$("vcwl").onclick = () => { if (S && S.winlink && S.winlink.on) $("wlstop").click(); else { if (S && S.winlink && (!S.winlink.call || S.winlink.missing)) { tab("wl"); return msg(S.winlink.missing || "enter your call sign in the Winlink tab first"); } $("wlgo").click(); } };
 function modeRow() {
   const a = S && S.aprs, w = S && S.winlink; if (!a || !w) return;
+  const au = S.audio, voice = !!(au && au.ip !== "127.0.0.1");          // the Pi's own audio link (Winlink) is not a voice client
+  $("vgvoice").classList.toggle("active", voice); $("vgaprs").classList.toggle("active", a.on); $("vgwl").classList.toggle("active", w.on);
+  $("vgvoice").title = voice ? "Voice client connected: " + au.name : "Voice: the audio client on your computer (Start FT-897 Voice)";
+  $("vcvoicewho").hidden = !voice || au.ip === S.you || !$("vcstop").hidden;      // (the Stop button already names it) $("vcvoicewho").textContent = voice ? au.name.split(" ")[0] : "";
+  const aw = a.missing ? "not ready: " + a.missing : a.err ? a.err : a.on && a.net === false ? "no internet" : "";
+  $("vcaprswarn").hidden = !aw; $("vcaprswarn").textContent = aw;
+  const busy = voice || a.on || w.on || cwOn() || (S.keyed && S.mine);
+  $("stopall").hidden = !busy; $("stopall").disabled = !S.allowed;
   $("vcaprs").textContent = a.on ? "■ Stop" : "▶ Start"; $("vcaprs").classList.toggle("running", a.on); $("vcaprs").title = a.on ? `APRS running as ${a.call} · ${a.heard} stations` + (a.unread ? ` · ${a.unread} unread` : "") : "Start APRS";
   $("vcaprsopen").textContent = "🗺 APRS page" + (a.unread ? ` (${a.unread})` : "");
   $("vcwl").textContent = w.on ? "■ Stop" : "▶ Start"; $("vcwl").classList.toggle("running", w.on);
+  $("vcwl").title = w.on ? "Stop Winlink (running over " + w.link_name + ")" : "Start Winlink over the link chosen on the left";
+  if (document.activeElement !== $("vcwllink") && Date.now() - wlSetAt > 1500) $("vcwllink").value = w.link; $("vcwllink").disabled = w.on || !S.allowed;
   $("vcwlopen").hidden = !w.on; $("vcwlopen").href = location.protocol + "//" + location.hostname + ":" + w.pat_port + "/";
-}
-function apRender() {
-  modeRow();
-  const a = S && S.aprs; if (!a) return;
-  $("apstat").textContent = a.missing ? "Not ready: " + a.missing : a.on ? `APRS is running as ${a.call}` + (a.by ? `, started by ${a.by}` : "") + ` · ${a.heard} stations` + (a.unread ? ` · ${a.unread} unread message${a.unread > 1 ? "s" : ""}` : "") + (a.net === false ? " · no internet" : "")
-    : a.call ? "APRS is off." : "APRS is off. Set your call sign on the APRS page first.";
-  $("apstat").style.color = a.missing || a.err ? "var(--warn)" : ""; if (a.err) $("apstat").textContent += " · " + a.err;
-  $("apgo").hidden = a.on; $("apstop").hidden = !a.on;
 }
 
 // ---------- Winlink on the Pi (xara + Pat)
@@ -884,25 +895,28 @@ const wlSet = o => { wlSetAt = Date.now(); post("/api/winlink", { op: "set", ...
 $("wlcall").onchange = () => wlSet({ call: $("wlcall").value.trim().toUpperCase() });
 $("wlloc").onchange = () => wlSet({ locator: $("wlloc").value.trim() });
 $("wlbw").onchange = () => wlSet({ bw: +$("wlbw").value });
+$("vcwllink").onchange = () => { wlSet({ link: $("vcwllink").value }); wlShow($("vcwllink").value); $("vcwllink").blur(); };
+$("wlfm").onchange = () => wlSet({ fm: $("wlfm").value });
+function wlShow(L) { $("wlbw").hidden = L !== "hf"; $("wlfm").hidden = L !== "fm"; $("wlbwl").hidden = !(L === "hf" || L === "fm"); $("wldrive").hidden = $("wldrivel").hidden = $("wldrivev").hidden = L === "telnet"; }
 $("wldrive").oninput = () => { $("wldrivev").textContent = $("wldrive").value + " dBFS"; clearTimeout(wlSet.t); wlSet.t = setTimeout(() => wlSet({ drive: +$("wldrive").value }), 300); };
-$("wlgo").onclick = async () => {
-  if (S && S.audio && S.audio.ip !== "127.0.0.1") {
+async function wlStart(link) {
+  if (link !== "telnet" && S && S.audio && S.audio.ip !== "127.0.0.1") {
     if (!confirm("The voice client on " + S.audio.name + " is connected. Stop it and start Winlink?")) return;
-    return post("/api/winlink", { op: "start", stop_voice: true });
+    return post("/api/winlink", { op: "start", link, stop_voice: true });
   }
-  post("/api/winlink", { op: "start" });
-};
-$("wlstop").onclick = () => post("/api/winlink", { op: "stop" });
+  post("/api/winlink", { op: "start", link });
+}
+
 function wlRender() {
   const w = S && S.winlink; if (!w) return;
   const act = document.activeElement, fresh = Date.now() - wlSetAt > 1500;
   if (fresh && act !== $("wlcall")) $("wlcall").value = w.call; if (fresh && act !== $("wlloc")) $("wlloc").value = w.locator;
-  if (fresh) { $("wlbw").value = String(w.bw); if (act !== $("wldrive")) { $("wldrive").value = w.drive; $("wldrivev").textContent = Math.round(w.drive) + " dBFS"; } }
+  if (fresh) { $("wlbw").value = String(w.bw); $("wlfm").value = w.fm; wlShow(w.link); }
+  if (fresh) { if (act !== $("wldrive")) { $("wldrive").value = w.drive; $("wldrivev").textContent = Math.round(w.drive) + " dBFS"; } }
   const parts = Object.entries(w.alive || {}).map(([k, v]) => (v ? "● " : "○ ") + k).join("  ");
-  $("wlstat").textContent = w.missing ? "Not ready: " + w.missing : w.on ? `Winlink is running (${parts}), started by ${w.by || "?"} ${ago(w.since)} ago.` + (w.err ? " " + w.err : "") : "Winlink is off." + (w.err ? " Last time: " + w.err : "");
+  $("wlstat").textContent = w.missing ? "Not ready: " + w.missing : w.on ? `Winlink is running over ${w.link_name} (${parts}), started by ${w.by || "?"} ${ago(w.since)} ago.` + (w.err ? " " + w.err : "") : "Winlink is off." + (w.err ? " Last time: " + w.err : "");
   $("wlstat").style.color = w.missing || w.err ? "var(--warn)" : "";
-  $("wlgo").hidden = w.on; $("wlstop").hidden = !w.on; $("wlopen").hidden = !w.on;
-  $("wlopen").href = location.protocol + "//" + location.hostname + ":" + w.pat_port + "/";
+
   for (const id of ["wlcall", "wlbw", "wldrive"]) $(id).disabled = w.on;
   const lg = (w.log || []).join("\n"); if ($("wllog").textContent !== lg) { $("wllog").textContent = lg; $("wllog").scrollTop = 1e6; }
 }

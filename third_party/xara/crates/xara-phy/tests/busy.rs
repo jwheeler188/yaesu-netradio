@@ -172,3 +172,47 @@ fn forced_holds_and_releases_after_hang() {
     let t = edges[0].0 as f64 / 48000.0;
     assert!((1.40..1.50).contains(&t), "{t}");
 }
+
+// yaesu-netradio: an FM receiver's open-squelch hiss is tilted (here 18 dB down across the band, as an FT-897D's data
+// port gives it). That alone must not read busy on FM; xara's own VARA FM signal in it, even weaker than the hiss, must.
+fn tilted_hiss(n: &mut Rng, len: usize) -> Vec<f64> {
+    let w = noise(n, len, db(-20.0));
+    let (mut a, mut out) = (0.0, Vec::with_capacity(len));
+    for v in w {
+        a = 0.93 * a + v; // one-pole low-pass: about -18 dB from 300 Hz to 3 kHz
+        out.push(a * 0.25);
+    }
+    out
+}
+
+#[test]
+fn fm_tilted_hiss_is_not_busy_but_vara_fm_in_it_is() {
+    use xara_phy::fm::level::{FmBandwidth, Record as FmRecord};
+    use xara_phy::fm::tx::{Modulator as FmModulator, TxOptions};
+    let mut n = Rng::new(21);
+    let hiss = tilted_hiss(&mut n, 48000 * 20);
+    let mut hf = Busy::new(Bandwidth::Hz2750);
+    run(&mut hf, &hiss);
+    let mut b = Busy::fm();
+    run(&mut b, &hiss);
+    assert!(!b.is_on() && b.hits == [0, 0], "hiss alone: {:?} (the HF test on it: {:?})", b.hits, hf.hits);
+    let mut r = Rng::new(9);
+    let mut rand = |k: u32| r.below(k);
+    for bw in [FmBandwidth::Narrow, FmBandwidth::Wide] {
+        let m = FmModulator::new(bw);
+        let rec = FmRecord::from_index(3).unwrap();
+        let frame: Vec<u8> = (0..m.level(rec).frame_bytes() as usize).map(|i| (i * 37 + 11) as u8).collect();
+        let sig = m.transmission(rec, 7, &[&frame], 4, TxOptions::default(), &mut rand);
+        let rms = |x: &[f64]| (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt();
+        let more = tilted_hiss(&mut n, sig.len());
+        let (hr, sr) = (rms(&more), rms(&sig));
+        // 10 dB under the hiss's level, the hiss quietened 10 dB by the carrier
+        let x: Vec<f64> = sig.iter().zip(&more).map(|(s, h)| s / sr * hr * db(-10.0) + h * db(-10.0)).collect();
+        let mut b2 = Busy::fm();
+        run(&mut b2, &hiss[..48000 * 5]);
+        assert!(!b2.is_on(), "{bw:?} before");
+        let edges = run(&mut b2, &x);
+        assert_eq!(edges.first().map(|e| e.1), Some(true), "{bw:?}: VARA FM not seen as busy");
+        assert!(edges[0].0 < 48000 / 2, "{bw:?}: busy only after {} samples", edges[0].0);
+    }
+}

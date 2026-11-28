@@ -121,11 +121,34 @@ pub struct Busy {
     hang: u32,
     on: bool,
     pub hits: [u32; 2],
+    /// FM only (None on HF): each bin's learned receiver hiss, the mean of 10 log10 of its power. An FM receiver's hiss with
+    /// the squelch open is far from flat (de-emphasis, the radio's data filter: 15-20 dB of tilt across the passband), and
+    /// the single-bin tone test, made for flat HF noise, took that tilt for a carrier and held BUSY on for good. On FM a
+    /// station is busy when the last FM_AVG blocks differ from the learned hiss by more than FM_DIST_DB on average across
+    /// the band: a station quietens the hiss and puts its own shape in its place. (yaesu-netradio change, 2026-11-27.)
+    floor: Option<[f64; 128]>,
+    floor_n: u32,
+    recent: VecDeque<[f64; 128]>,
+    pub fm_dist: f64,
 }
+
+/// The FM hiss floor: learned for the first second (FLOOR_LEARN blocks of 128 samples, about 23 a second) before the
+/// test is trusted, then followed slowly (FLOOR_ALPHA per block, a step of at most FLOOR_STEP_DB), and 20 times more slowly
+/// still while busy, so a signal isn't learned as hiss.
+pub const FLOOR_ALPHA: f64 = 0.02;
+pub const FLOOR_STEP_DB: f64 = 10.0;
+/// E[10 log10 X] for X exponential with mean 1 (a noise bin's power): -2.51 dB.
+pub const EXP_LOG_BIAS_DB: f64 = 2.507;
+pub const FLOOR_LEARN: u32 = 23;
+/// FM: blocks averaged (about 0.34 s) and the mean distance from the hiss, in dB, that means a station is there. Measured
+/// on an FT-897D with the squelch open: hiss alone 1.2 dB typical, 1.6 dB at most; xara's VARA FM 2.6-5 dB, even 15 dB
+/// under the hiss.
+pub const FM_AVG: usize = 8;
+pub const FM_DIST_DB: f64 = 2.0;
 
 impl Busy {
     pub fn fm() -> Self {
-        Self::new(Bandwidth::Hz2750)
+        Self { floor: Some([f64::NAN; 128]), ..Self::new(Bandwidth::Hz2750) }
     }
 
     pub fn new(bw: Bandwidth) -> Self {
@@ -145,6 +168,10 @@ impl Busy {
             hang: 0,
             on: false,
             hits: [0; 2],
+            floor: None,
+            floor_n: 0,
+            recent: VecDeque::with_capacity(16),
+            fm_dist: 0.0,
         }
     }
 
@@ -221,7 +248,36 @@ impl Busy {
         }
         self.fft128.process(&mut self.block);
         let p: [f64; 128] = std::array::from_fn(|k| self.block[k].norm_sqr());
-        detect_tone(&p, self.bw)
+        let Some(fl) = self.floor.as_mut() else { return detect_tone(&p, self.bw) };
+        let (lo, hi, _) = tone_band(self.bw);
+        let db: [f64; 128] = std::array::from_fn(|k| 10.0 * p[k].max(1e-30).log10());
+        if fl[0].is_nan() {
+            *fl = db;
+            self.floor_n = 0;
+            self.recent.clear();
+        }
+        self.floor_n = self.floor_n.saturating_add(1);
+        if self.recent.len() == FM_AVG {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(p);
+        // the last FM_AVG blocks against the learned hiss, bin by bin, in dB; the mean distance over the band
+        let n = self.recent.len() as f64;
+        let d = (lo..=hi)
+            .map(|k| {
+                // fl is the mean of 10 log10(power): for noise that is 2.51 dB under 10 log10 of the mean power
+                let avg = self.recent.iter().map(|r| r[k]).sum::<f64>() / n;
+                (10.0 * avg.max(1e-30).log10() - (fl[k] + EXP_LOG_BIAS_DB)).abs()
+            })
+            .sum::<f64>()
+            / (hi - lo + 1) as f64;
+        self.fm_dist = d;
+        let hit = self.floor_n > FLOOR_LEARN && d > FM_DIST_DB;
+        let a = if self.floor_n <= FLOOR_LEARN { 1.0 / self.floor_n as f64 } else if hit { FLOOR_ALPHA / 20.0 } else { FLOOR_ALPHA };
+        for k in 0..128 {
+            fl[k] += a * (db[k] - fl[k]).clamp(-FLOOR_STEP_DB, FLOOR_STEP_DB);
+        }
+        hit
     }
 
     fn signature_hit(&mut self) -> bool {

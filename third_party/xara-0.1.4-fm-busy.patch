@@ -1,0 +1,245 @@
+xara 0.1.3 -> 0.1.4: FM busy-channel detection no longer takes an open squelch's hiss for a station.
+
+From yaesu-netradio (W5PL), 2026-11-27, https://github.com/jwheeler188/yaesu-netradio
+xara is by x0rro (MIT licence); its repository was discontinued and emptied on 2026-11-08, so this fix is shared as a patch.
+
+On FM, xara used its HF single-bin "carrier" test, which assumes flat noise. A real FM receiver's hiss with the squelch
+open is tilted 15-20 dB across the passband; on an FT-897D xara held BUSY on 97 % of the time with nobody there, and
+Pat waited for a clear channel for ever. On FM, xara now learns the receiver's hiss bin by bin and calls the channel
+busy when the last 0.34 s differs from it by more than 2 dB across the band. Measured on that radio: hiss alone 0 %
+busy; xara's VARA FM, narrow and wide, busy within 0.12-0.25 s, even 15 dB under the hiss. HF is unchanged.
+
+Apply in the top folder of the xara 0.1.3 source:   patch -p1 < xara-0.1.4-fm-busy.patch
+Then:   cargo test -p xara-phy --test busy fm_tilted     and build as usual.
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c4ea14e..72c2613 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,18 @@
+ # Changelog
+ 
++## 0.1.4 (yaesu-netradio, W5PL, 2026-11-27)
++
++Not from xara's author: x0rro's repository was discontinued and emptied on 2026-11-08. Kept with yaesu-netradio
++(github.com/jwheeler188/yaesu-netradio, `third_party/xara`); the same change as a patch for 0.1.3 is
++`third_party/xara-0.1.4-fm-busy.patch` there.
++
++- bugfix: FM busy-channel detection no longer takes an open squelch's hiss for a station. The HF single-bin carrier
++  test assumed flat noise; a real FM receiver's hiss is tilted 15-20 dB across the passband, so on an FT-897D xara
++  held BUSY on 97 % of the time with nobody there and Pat waited for a clear channel for ever. On FM, xara now learns
++  the receiver's hiss bin by bin and calls the channel busy when the last 0.34 s differs from it by more than 2 dB
++  across the band. Measured on that radio: hiss alone 0 % busy; VARA FM narrow and wide busy within 0.12-0.25 s, even
++  15 dB under the hiss. HF is unchanged. Test: `fm_tilted_hiss_is_not_busy_but_vara_fm_in_it_is`.
++
+ ## 0.1.3
+ 
+ - macOS / CoreAudio support thanks to NR5P's work in x0rro/xara#19
+diff --git a/Cargo.lock b/Cargo.lock
+index 7effd3c..a8bb669 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -113,7 +113,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "xara"
+-version = "0.1.3"
++version = "0.1.4"
+ dependencies = [
+  "alsa-sys",
+  "libc",
+@@ -126,7 +126,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "xara-arq"
+-version = "0.1.3"
++version = "0.1.4"
+ dependencies = [
+  "miniz_oxide",
+  "xara-host",
+@@ -136,7 +136,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "xara-host"
+-version = "0.1.3"
++version = "0.1.4"
+ dependencies = [
+  "libc",
+  "xara-testkit",
+@@ -144,7 +144,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "xara-phy"
+-version = "0.1.3"
++version = "0.1.4"
+ dependencies = [
+  "num-complex",
+  "rustfft",
+@@ -153,11 +153,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "xara-testkit"
+-version = "0.1.3"
++version = "0.1.4"
+ 
+ [[package]]
+ name = "xara-ui"
+-version = "0.1.3"
++version = "0.1.4"
+ dependencies = [
+  "libc",
+  "rustfft",
+diff --git a/Cargo.toml b/Cargo.toml
+index 5317943..78c3ac9 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -3,7 +3,7 @@ resolver = "3"
+ members = ["crates/xara-phy", "crates/xara-arq", "crates/xara-host", "crates/xara-ui", "crates/xara", "crates/xara-testkit"]
+ 
+ [workspace.package]
+-version = "0.1.3"
++version = "0.1.4"
+ edition = "2024"
+ rust-version = "1.85"
+ publish = false
+diff --git a/crates/xara-phy/src/busy.rs b/crates/xara-phy/src/busy.rs
+index 5ce7f42..edcc296 100644
+--- a/crates/xara-phy/src/busy.rs
++++ b/crates/xara-phy/src/busy.rs
+@@ -121,11 +121,34 @@ pub struct Busy {
+     hang: u32,
+     on: bool,
+     pub hits: [u32; 2],
++    /// FM only (None on HF): each bin's learned receiver hiss, the mean of 10 log10 of its power. An FM receiver's hiss with
++    /// the squelch open is far from flat (de-emphasis, the radio's data filter: 15-20 dB of tilt across the passband), and
++    /// the single-bin tone test, made for flat HF noise, took that tilt for a carrier and held BUSY on for good. On FM a
++    /// station is busy when the last FM_AVG blocks differ from the learned hiss by more than FM_DIST_DB on average across
++    /// the band: a station quietens the hiss and puts its own shape in its place. (yaesu-netradio change, 2026-11-27.)
++    floor: Option<[f64; 128]>,
++    floor_n: u32,
++    recent: VecDeque<[f64; 128]>,
++    pub fm_dist: f64,
+ }
+ 
++/// The FM hiss floor: learned for the first second (FLOOR_LEARN blocks of 128 samples, about 23 a second) before the
++/// test is trusted, then followed slowly (FLOOR_ALPHA per block, a step of at most FLOOR_STEP_DB), and 20 times more slowly
++/// still while busy, so a signal isn't learned as hiss.
++pub const FLOOR_ALPHA: f64 = 0.02;
++pub const FLOOR_STEP_DB: f64 = 10.0;
++/// E[10 log10 X] for X exponential with mean 1 (a noise bin's power): -2.51 dB.
++pub const EXP_LOG_BIAS_DB: f64 = 2.507;
++pub const FLOOR_LEARN: u32 = 23;
++/// FM: blocks averaged (about 0.34 s) and the mean distance from the hiss, in dB, that means a station is there. Measured
++/// on an FT-897D with the squelch open: hiss alone 1.2 dB typical, 1.6 dB at most; xara's VARA FM 2.6-5 dB, even 15 dB
++/// under the hiss.
++pub const FM_AVG: usize = 8;
++pub const FM_DIST_DB: f64 = 2.0;
++
+ impl Busy {
+     pub fn fm() -> Self {
+-        Self::new(Bandwidth::Hz2750)
++        Self { floor: Some([f64::NAN; 128]), ..Self::new(Bandwidth::Hz2750) }
+     }
+ 
+     pub fn new(bw: Bandwidth) -> Self {
+@@ -145,6 +168,10 @@ impl Busy {
+             hang: 0,
+             on: false,
+             hits: [0; 2],
++            floor: None,
++            floor_n: 0,
++            recent: VecDeque::with_capacity(16),
++            fm_dist: 0.0,
+         }
+     }
+ 
+@@ -221,7 +248,36 @@ impl Busy {
+         }
+         self.fft128.process(&mut self.block);
+         let p: [f64; 128] = std::array::from_fn(|k| self.block[k].norm_sqr());
+-        detect_tone(&p, self.bw)
++        let Some(fl) = self.floor.as_mut() else { return detect_tone(&p, self.bw) };
++        let (lo, hi, _) = tone_band(self.bw);
++        let db: [f64; 128] = std::array::from_fn(|k| 10.0 * p[k].max(1e-30).log10());
++        if fl[0].is_nan() {
++            *fl = db;
++            self.floor_n = 0;
++            self.recent.clear();
++        }
++        self.floor_n = self.floor_n.saturating_add(1);
++        if self.recent.len() == FM_AVG {
++            self.recent.pop_front();
++        }
++        self.recent.push_back(p);
++        // the last FM_AVG blocks against the learned hiss, bin by bin, in dB; the mean distance over the band
++        let n = self.recent.len() as f64;
++        let d = (lo..=hi)
++            .map(|k| {
++                // fl is the mean of 10 log10(power): for noise that is 2.51 dB under 10 log10 of the mean power
++                let avg = self.recent.iter().map(|r| r[k]).sum::<f64>() / n;
++                (10.0 * avg.max(1e-30).log10() - (fl[k] + EXP_LOG_BIAS_DB)).abs()
++            })
++            .sum::<f64>()
++            / (hi - lo + 1) as f64;
++        self.fm_dist = d;
++        let hit = self.floor_n > FLOOR_LEARN && d > FM_DIST_DB;
++        let a = if self.floor_n <= FLOOR_LEARN { 1.0 / self.floor_n as f64 } else if hit { FLOOR_ALPHA / 20.0 } else { FLOOR_ALPHA };
++        for k in 0..128 {
++            fl[k] += a * (db[k] - fl[k]).clamp(-FLOOR_STEP_DB, FLOOR_STEP_DB);
++        }
++        hit
+     }
+ 
+     fn signature_hit(&mut self) -> bool {
+diff --git a/crates/xara-phy/tests/busy.rs b/crates/xara-phy/tests/busy.rs
+index 9b24ff3..28b9b12 100644
+--- a/crates/xara-phy/tests/busy.rs
++++ b/crates/xara-phy/tests/busy.rs
+@@ -172,3 +172,47 @@ fn forced_holds_and_releases_after_hang() {
+     let t = edges[0].0 as f64 / 48000.0;
+     assert!((1.40..1.50).contains(&t), "{t}");
+ }
++
++// yaesu-netradio: an FM receiver's open-squelch hiss is tilted (here 18 dB down across the band, as an FT-897D's data
++// port gives it). That alone must not read busy on FM; xara's own VARA FM signal in it, even weaker than the hiss, must.
++fn tilted_hiss(n: &mut Rng, len: usize) -> Vec<f64> {
++    let w = noise(n, len, db(-20.0));
++    let (mut a, mut out) = (0.0, Vec::with_capacity(len));
++    for v in w {
++        a = 0.93 * a + v; // one-pole low-pass: about -18 dB from 300 Hz to 3 kHz
++        out.push(a * 0.25);
++    }
++    out
++}
++
++#[test]
++fn fm_tilted_hiss_is_not_busy_but_vara_fm_in_it_is() {
++    use xara_phy::fm::level::{FmBandwidth, Record as FmRecord};
++    use xara_phy::fm::tx::{Modulator as FmModulator, TxOptions};
++    let mut n = Rng::new(21);
++    let hiss = tilted_hiss(&mut n, 48000 * 20);
++    let mut hf = Busy::new(Bandwidth::Hz2750);
++    run(&mut hf, &hiss);
++    let mut b = Busy::fm();
++    run(&mut b, &hiss);
++    assert!(!b.is_on() && b.hits == [0, 0], "hiss alone: {:?} (the HF test on it: {:?})", b.hits, hf.hits);
++    let mut r = Rng::new(9);
++    let mut rand = |k: u32| r.below(k);
++    for bw in [FmBandwidth::Narrow, FmBandwidth::Wide] {
++        let m = FmModulator::new(bw);
++        let rec = FmRecord::from_index(3).unwrap();
++        let frame: Vec<u8> = (0..m.level(rec).frame_bytes() as usize).map(|i| (i * 37 + 11) as u8).collect();
++        let sig = m.transmission(rec, 7, &[&frame], 4, TxOptions::default(), &mut rand);
++        let rms = |x: &[f64]| (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt();
++        let more = tilted_hiss(&mut n, sig.len());
++        let (hr, sr) = (rms(&more), rms(&sig));
++        // 10 dB under the hiss's level, the hiss quietened 10 dB by the carrier
++        let x: Vec<f64> = sig.iter().zip(&more).map(|(s, h)| s / sr * hr * db(-10.0) + h * db(-10.0)).collect();
++        let mut b2 = Busy::fm();
++        run(&mut b2, &hiss[..48000 * 5]);
++        assert!(!b2.is_on(), "{bw:?} before");
++        let edges = run(&mut b2, &x);
++        assert_eq!(edges.first().map(|e| e.1), Some(true), "{bw:?}: VARA FM not seen as busy");
++        assert!(edges[0].0 < 48000 / 2, "{bw:?}: busy only after {} samples", edges[0].0);
++    }
++}

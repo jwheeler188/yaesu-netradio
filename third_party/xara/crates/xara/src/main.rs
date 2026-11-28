@@ -93,7 +93,7 @@ fn defaults() -> Args {
         ui_control: false,
         ui_token: None,
         state_dir: None,
-        registered: false,
+        registered: cfg!(feature = "registered"),
         offer_level: None,
         radio: false,
         ptt: None,
@@ -167,6 +167,7 @@ fn take(a: &mut Args, k: &str, mut v: impl FnMut() -> Result<String, String>) ->
         "--registered" => a.registered = true,
         #[cfg(not(feature = "registered"))]
         "--registered" => return Err("not built with registered features".into()),
+        "--unregistered" => a.registered = false,
         #[cfg(feature = "registered")]
         "--offer-level" => a.offer_level = Some(num(k, &v()?)?),
         _ if k == "--trusdx-speaker" => return Err(format!("{k}: xara was built without the trusdx feature")),
